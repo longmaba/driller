@@ -46,15 +46,15 @@
         ["orange", "yellow", "green", "orange", "orange", "orange"],
         ["orange", "yellow", "green", "purple", "purple", "purple"],
         ["orange", "yellow", "green", "purple", "green", "green"],
-        ["orange", "yellow", "green", "purple", "green", "green"],
-        ["orange", "yellow", "green", "purple", "yellow", "yellow"],
+        ["orange", { color: "yellow", hp: 10 }, "green", "purple", "green", "green"],
+        ["orange", "yellow", "green", { color: "purple", hp: 10 }, "yellow", "yellow"],
         ["orange", "yellow", "green", "green", "yellow", "yellow"],
       ],
       poolRows: 2,
       poolColumns: [
         [
-          { color: "yellow", energy: 13 },
-          { color: "green", energy: 10 },
+          { color: "yellow", energy: 12 },
+          { color: "green", energy: 6 },
         ],
         [
           { color: "green", energy: 10 },
@@ -67,6 +67,48 @@
         [
           { color: "purple", energy: 10 },
           { color: "yellow", energy: 4 },
+        ],
+      ],
+    },
+    {
+      id: "sample-3",
+      rows: 10,
+      cols: 6,
+      // Example durable tile: { color: "purple", hp: 3 }
+      grid: [
+        ["yellow", "yellow", "yellow", "yellow", "yellow", "yellow"],
+        ["green", "green", "green", "green", "green", "green"],
+        ["green", "orange", "orange", "orange", "orange", "green"],
+        ["green", "orange", "purple", "purple", "orange", "green"],
+        ["green", "orange", { color: "purple", hp: 5 }, "purple", "orange", "green"],
+        ["green", "orange", "purple", "purple", "orange", { color: "green", hp: 10 }],
+        ["green", "orange", "purple", "purple", "orange", "green"],
+        ["green", "orange", "orange", "orange", "orange", "green"],
+        ["yellow", "yellow", { color: "yellow", hp: 10 }, "yellow", "yellow", "yellow"],
+        ["yellow", "yellow", "yellow", "yellow", "yellow", "yellow"],
+      ],
+      poolRows: 2,
+      poolColumns: [
+        [
+          { color: "yellow", energy: 4 },
+          { color: "green", energy: 6 },
+          { color: "yellow", energy: 4 },
+        ],
+        [
+          { color: "green", energy: 7 },
+          { color: "yellow", energy: 4 },
+          { color: "green", energy: 3 },
+        ],
+        [
+          { color: "orange", energy: 7 },
+          { color: "green", energy: 11 },
+          { color: "yellow", energy: 2 },
+        ],
+        [
+          { color: "purple", energy: 8 },
+          { color: "orange", energy: 9 },
+          { color: "yellow", energy: 13 },
+          { color: "purple", energy: 4 },
         ],
       ],
     },
@@ -135,7 +177,7 @@
     const cols = Number.isInteger(level.cols) && level.cols > 0 ? level.cols : maxProvidedCols;
 
     const normalizedGrid = Array.from({ length: rows }, (_, r) =>
-      Array.from({ length: cols }, (_, c) => normalizeTile(level.grid?.[r]?.[c] ?? null))
+      Array.from({ length: cols }, (_, c) => normalizeTile(level.grid?.[r]?.[c] ?? null)),
     );
 
     const normalizedPoolColumns = Array.from({ length: FIXED_POOL_COLS }, (_, colIndex) => {
@@ -144,9 +186,7 @@
     });
 
     const poolRows =
-      Number.isInteger(level.poolRows) && level.poolRows > 0
-        ? level.poolRows
-        : Math.max(1, ...normalizedPoolColumns.map((col) => col.length));
+      Number.isInteger(level.poolRows) && level.poolRows > 0 ? level.poolRows : Math.max(1, ...normalizedPoolColumns.map((col) => col.length));
 
     return {
       ...cloneJson(level),
@@ -307,11 +347,7 @@
 
     for (let i = 0; i < candidates.length; i += 1) {
       const candidate = candidates[i];
-      const inBounds =
-        candidate.row >= 0 &&
-        candidate.row < game.level.rows &&
-        candidate.col >= 0 &&
-        candidate.col < game.level.cols;
+      const inBounds = candidate.row >= 0 && candidate.row < game.level.rows && candidate.col >= 0 && candidate.col < game.level.cols;
 
       if (!inBounds) continue;
       if (gridRef[candidate.row]?.[candidate.col]?.color === color) return candidate;
@@ -693,8 +729,7 @@
         const classes = [];
         if (r > 0) classes.push("stacked");
 
-        const hasRise =
-          r === 0 && game.poolRiseAnimations.some((a) => a.col === c && now - a.createdAt < a.durationMs);
+        const hasRise = r === 0 && game.poolRiseAnimations.some((a) => a.col === c && now - a.createdAt < a.durationMs);
         if (hasRise) {
           classes.push("rise-in");
         }

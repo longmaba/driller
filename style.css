@@ -200,6 +200,10 @@ h2 {
   gap: 7px;
 }
 
+.slot .pool-drill {
+  width: 100%;
+  min-height: 56px;
+}
 .pool-drill {
   min-height: 56px;
   border-radius: 10px;
