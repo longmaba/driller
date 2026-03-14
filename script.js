@@ -67,7 +67,7 @@
         ],
         [
           { color: "purple", energy: 10 },
-          { color: "yellow", energy: 15 },
+          { color: "yellow", energy: 4 },
         ],
       ],
     },
@@ -83,7 +83,7 @@
         ["green", "orange", "purple", "purple", "orange", "green"],
         ["green", "orange", { color: "purple", hp: 5 }, "purple", "orange", "green"],
         ["green", "orange", "purple", "purple", "orange", { color: "green", hp: 10 }],
-        ["green", "orange", "purple", "purple", "orange", "green"],
+        ["green", "orange", "purple", "orange", "purple", "green"],
         ["green", "orange", "orange", "orange", "orange", "green"],
         ["yellow", "yellow", { color: "yellow", hp: 10 }, "yellow", "yellow", "yellow"],
         ["yellow", "yellow", "yellow", "yellow", "yellow", "yellow"],
@@ -91,13 +91,13 @@
       poolRows: 2,
       poolColumns: [
         [
-          { color: "yellow", energy: 15 },
+          { color: "yellow", energy: 4 },
           { color: "green", energy: 6 },
-          { color: "yellow", energy: 15 },
+          { color: "yellow", energy: 4 },
         ],
         [
           { color: "green", energy: 7 },
-          { color: "yellow", energy: 15 },
+          { color: "yellow", energy: 4 },
           { color: "green", energy: 3 },
         ],
         [
