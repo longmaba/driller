@@ -83,7 +83,7 @@
         ["green", "orange", "purple", "purple", "orange", "green"],
         ["green", "orange", { color: "purple", hp: 5 }, "purple", "orange", "green"],
         ["green", "orange", "purple", "purple", "orange", { color: "green", hp: 10 }],
-        ["green", "orange", "purple", "orange", "purple", "green"],
+        ["green", "orange", "purple", "purple", "orange", "green"],
         ["green", "orange", "orange", "orange", "orange", "green"],
         ["yellow", "yellow", { color: "yellow", hp: 10 }, "yellow", "yellow", "yellow"],
         ["yellow", "yellow", "yellow", "yellow", "yellow", "yellow"],
@@ -290,6 +290,7 @@
   const TRAY_RETURN_DURATION_MS = 320;
   const HIT_SHAKE_DISTANCE_PX = 3;
   const HIT_SHAKE_DURATION_MS = 90;
+  const MAX_ACTIVE_DRILLS = 5;
 
   const el = {
     grid: document.getElementById("grid"),
@@ -309,7 +310,7 @@
     grid: [],
     plannedGrid: [],
     tray: [],
-    trayCapacity: 5,
+    trayCapacity: 4,
     poolColumns: [],
     state: "running", // running | won | lost
     activeDrills: 0,
@@ -551,7 +552,7 @@
   }
 
   function canDeploy() {
-    return game.state === "running";
+    return game.state === "running" && game.activeDrills < MAX_ACTIVE_DRILLS;
   }
 
   function canPlaceInTray() {
@@ -919,6 +920,12 @@
   }
 
   function tryDeploy(colIndex) {
+    if (game.state !== "running") return;
+    if (game.activeDrills >= MAX_ACTIVE_DRILLS) {
+      setStatus(`Active drill limit reached (${MAX_ACTIVE_DRILLS}). Wait for one to finish.`);
+      return;
+    }
+
     if (!canDeploy()) return;
 
     const top = game.poolColumns[colIndex]?.[0] || null;
@@ -932,6 +939,12 @@
   }
 
   function tryDeployFromTray(trayIndex) {
+    if (game.state !== "running") return;
+    if (game.activeDrills >= MAX_ACTIVE_DRILLS) {
+      setStatus(`Active drill limit reached (${MAX_ACTIVE_DRILLS}). Wait for one to finish.`);
+      return;
+    }
+
     if (!canDeploy()) return;
 
     const trayDrill = game.tray[trayIndex] || null;
