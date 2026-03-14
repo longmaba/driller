@@ -66,7 +66,7 @@
         ],
         [
           { color: "purple", energy: 10 },
-          { color: "yellow", energy: 4 },
+          { color: "yellow", energy: 15 },
         ],
       ],
     },
@@ -90,13 +90,13 @@
       poolRows: 2,
       poolColumns: [
         [
-          { color: "yellow", energy: 4 },
+          { color: "yellow", energy: 15 },
           { color: "green", energy: 6 },
-          { color: "yellow", energy: 4 },
+          { color: "yellow", energy: 15 },
         ],
         [
           { color: "green", energy: 7 },
-          { color: "yellow", energy: 4 },
+          { color: "yellow", energy: 15 },
           { color: "green", energy: 3 },
         ],
         [
@@ -136,19 +136,19 @@
           { color: "yellow", energy: 6 },
         ],
         [
-          { color: "green", energy: 10 },
+          { color: "green", energy: 2 },
           { color: "orange", energy: 8 },
           { color: "green", energy: 6 },
         ],
         [
-          { color: "orange", energy: 11 },
+          { color: "orange", energy: 6 },
           { color: "purple", energy: 10 },
-          { color: "yellow", energy: 4 },
+          { color: "yellow", energy: 10 },
         ],
         [
-          { color: "purple", energy: 12 },
-          { color: "orange", energy: 7 },
-          { color: "yellow", energy: 5 },
+          { color: "purple", energy: 6 },
+          { color: "orange", energy: 4 },
+          { color: "yellow", energy: 10 },
         ],
       ],
     },
@@ -171,19 +171,19 @@
       poolRows: 3,
       poolColumns: [
         [
-          { color: "green", energy: 10 },
-          { color: "yellow", energy: 8 },
+          { color: "green", energy: 3 },
+          { color: "yellow", energy: 7 },
           { color: "green", energy: 6 },
         ],
         [
-          { color: "yellow", energy: 10 },
+          { color: "yellow", energy: 3 },
           { color: "orange", energy: 11 },
-          { color: "yellow", energy: 5 },
+          { color: "yellow", energy: 6 },
         ],
         [
-          { color: "orange", energy: 10 },
+          { color: "orange", energy: 9 },
           { color: "purple", energy: 10 },
-          { color: "orange", energy: 6 },
+          { color: "orange", energy: 8 },
         ],
         [
           { color: "purple", energy: 11 },
@@ -211,26 +211,26 @@
       poolRows: 4,
       poolColumns: [
         [
-          { color: "yellow", energy: 7 },
-          { color: "green", energy: 8 },
+          { color: "yellow", energy: 4 },
+          { color: "green", energy: 2 },
           { color: "yellow", energy: 6 },
           { color: "orange", energy: 5 },
         ],
         [
-          { color: "green", energy: 10 },
+          { color: "green", energy: 6 },
           { color: "orange", energy: 8 },
           { color: "green", energy: 6 },
           { color: "purple", energy: 4 },
         ],
         [
-          { color: "orange", energy: 12 },
+          { color: "orange", energy: 9 },
           { color: "purple", energy: 10 },
-          { color: "orange", energy: 7 },
-          { color: "yellow", energy: 4 },
+          { color: "orange", energy: 5 },
+          { color: "yellow", energy: 5 },
         ],
         [
-          { color: "purple", energy: 12 },
-          { color: "yellow", energy: 9 },
+          { color: "purple", energy: 5 },
+          { color: "yellow", energy: 5 },
           { color: "purple", energy: 6 },
           { color: "green", energy: 4 },
         ],
@@ -255,31 +255,32 @@
       poolRows: 4,
       poolColumns: [
         [
-          { color: "yellow", energy: 8 },
-          { color: "green", energy: 9 },
           { color: "yellow", energy: 7 },
+          { color: "green", energy: 5 },
+          { color: "yellow", energy: 14 },
           { color: "orange", energy: 5 },
         ],
         [
-          { color: "green", energy: 12 },
-          { color: "orange", energy: 10 },
+          { color: "green", energy: 3 },
+          { color: "orange", energy: 5 },
           { color: "green", energy: 7 },
           { color: "purple", energy: 4 },
         ],
         [
-          { color: "orange", energy: 13 },
+          { color: "orange", energy: 5 },
           { color: "purple", energy: 12 },
-          { color: "orange", energy: 8 },
-          { color: "yellow", energy: 4 },
+          { color: "orange", energy: 4 },
+          { color: "yellow", energy: 15 },
         ],
         [
-          { color: "purple", energy: 14 },
-          { color: "yellow", energy: 11 },
+          { color: "purple", energy: 4 },
+          { color: "yellow", energy: 10 },
           { color: "purple", energy: 8 },
-          { color: "green", energy: 5 },
+          { color: "green", energy: 3 },
         ],
       ],
-    },  ];
+    },
+  ];
 
   const FIXED_POOL_COLS = 4;
   const TILE_SIZE_FALLBACK = 52;
