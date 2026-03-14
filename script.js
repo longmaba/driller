@@ -107,8 +107,8 @@
         [
           { color: "purple", energy: 8 },
           { color: "orange", energy: 9 },
-          { color: "yellow", energy: 13 },
           { color: "purple", energy: 4 },
+          { color: "yellow", energy: 13 },
         ],
       ],
     },
@@ -119,6 +119,8 @@
   const DRILL_SPEED_PX_PER_SEC = 420;
   const DRILL_HIT_HOLD_DISTANCE_PX = 28;
   const TRAY_RETURN_DURATION_MS = 320;
+  const HIT_SHAKE_DISTANCE_PX = 3;
+  const HIT_SHAKE_DURATION_MS = 90;
 
   const el = {
     grid: document.getElementById("grid"),
@@ -295,13 +297,34 @@
     };
   }
 
+  function triggerHitShake(strength = 1) {
+    if (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
+    const amplitude = HIT_SHAKE_DISTANCE_PX * Math.max(0.8, Math.min(1.6, strength));
+
+    el.grid.animate(
+      [
+        { transform: "translate3d(0, 0, 0)" },
+        { transform: `translate3d(${(-amplitude).toFixed(2)}px, ${(-amplitude * 0.45).toFixed(2)}px, 0)` },
+        { transform: `translate3d(${(amplitude * 0.85).toFixed(2)}px, ${(amplitude * 0.35).toFixed(2)}px, 0)` },
+        { transform: `translate3d(${(-amplitude * 0.35).toFixed(2)}px, ${(amplitude * 0.2).toFixed(2)}px, 0)` },
+        { transform: "translate3d(0, 0, 0)" },
+      ],
+      {
+        duration: HIT_SHAKE_DURATION_MS,
+        easing: "cubic-bezier(0.2, 0.8, 0.25, 1)",
+      },
+    );
+  }
+
   function spawnDrillDebris(row, col, color, incomingDir = { x: 0, y: -1 }) {
     const center = gridPoint(row, col);
     const count = 16;
 
     const incomingLen = Math.hypot(incomingDir.x, incomingDir.y);
-    const normIncoming =
-      incomingLen > 1e-6 ? { x: incomingDir.x / incomingLen, y: incomingDir.y / incomingLen } : { x: 0, y: -1 };
+    const normIncoming = incomingLen > 1e-6 ? { x: incomingDir.x / incomingLen, y: incomingDir.y / incomingLen } : { x: 0, y: -1 };
 
     // Debris trails behind the drill: opposite of movement direction.
     const back = { x: -normIncoming.x, y: -normIncoming.y };
@@ -592,10 +615,7 @@
       const fromNode = worldPoints[i].node;
       const toNode = worldPoints[i + 1].node;
       const repeatedDurableHit =
-        fromNode.action === "destroy" &&
-        toNode.action === "destroy" &&
-        fromNode.row === toNode.row &&
-        fromNode.col === toNode.col;
+        fromNode.action === "destroy" && toNode.action === "destroy" && fromNode.row === toNode.row && fromNode.col === toNode.col;
 
       if (repeatedDurableHit && len < 0.001) {
         len = DRILL_HIT_HOLD_DISTANCE_PX;
@@ -628,6 +648,7 @@
         const tile = game.grid[node.row]?.[node.col] ?? null;
         if (tile?.color === liveDrill.color && tile.hp > 0) {
           spawnDrillDebris(node.row, node.col, liveDrill.color, incomingDirs[nodeIndex]);
+          triggerHitShake(1);
           tile.hp = Math.max(0, tile.hp - 1);
           liveDrill.energy = Math.max(0, liveDrill.energy - 1);
 
