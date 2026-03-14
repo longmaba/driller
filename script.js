@@ -46,15 +46,15 @@
         ["orange", "yellow", "green", "orange", "orange", "orange"],
         ["orange", "yellow", "green", "purple", "purple", "purple"],
         ["orange", "yellow", "green", "purple", "green", "green"],
-        ["orange", { color: "yellow", hp: 10 }, "green", "purple", "green", "green"],
-        ["orange", "yellow", "green", { color: "purple", hp: 10 }, "yellow", "yellow"],
+        ["orange", "yellow", "green", "purple", "green", "green"],
+        ["orange", "yellow", "green", "purple", "yellow", "yellow"],
         ["orange", "yellow", "green", "green", "yellow", "yellow"],
       ],
       poolRows: 2,
       poolColumns: [
         [
-          { color: "yellow", energy: 12 },
-          { color: "green", energy: 6 },
+          { color: "yellow", energy: 13 },
+          { color: "green", energy: 10 },
         ],
         [
           { color: "green", energy: 10 },
@@ -67,48 +67,6 @@
         [
           { color: "purple", energy: 10 },
           { color: "yellow", energy: 4 },
-        ],
-      ],
-    },
-    {
-      id: "sample-3",
-      rows: 10,
-      cols: 6,
-      // Example durable tile: { color: "purple", hp: 3 }
-      grid: [
-        ["yellow", "yellow", "yellow", "yellow", "yellow", "yellow"],
-        ["green", "green", "green", "green", "green", "green"],
-        ["green", "orange", "orange", "orange", "orange", "green"],
-        ["green", "orange", "purple", "purple", "orange", "green"],
-        ["green", "orange", { color: "purple", hp: 5 }, "purple", "orange", "green"],
-        ["green", "orange", "purple", "purple", "orange", { color: "green", hp: 10 }],
-        ["green", "orange", "purple", "purple", "orange", "green"],
-        ["green", "orange", "orange", "orange", "orange", "green"],
-        ["yellow", "yellow", { color: "yellow", hp: 10 }, "yellow", "yellow", "yellow"],
-        ["yellow", "yellow", "yellow", "yellow", "yellow", "yellow"],
-      ],
-      poolRows: 2,
-      poolColumns: [
-        [
-          { color: "yellow", energy: 4 },
-          { color: "green", energy: 6 },
-          { color: "yellow", energy: 4 },
-        ],
-        [
-          { color: "green", energy: 7 },
-          { color: "yellow", energy: 4 },
-          { color: "green", energy: 3 },
-        ],
-        [
-          { color: "orange", energy: 7 },
-          { color: "green", energy: 11 },
-          { color: "yellow", energy: 2 },
-        ],
-        [
-          { color: "purple", energy: 8 },
-          { color: "orange", energy: 9 },
-          { color: "yellow", energy: 13 },
-          { color: "purple", energy: 4 },
         ],
       ],
     },
@@ -135,6 +93,7 @@
     levelIndex: 0,
     level: null,
     grid: [],
+    plannedGrid: [],
     tray: [],
     trayCapacity: 5,
     poolColumns: [],
@@ -145,6 +104,10 @@
 
   function cloneJson(value) {
     return JSON.parse(JSON.stringify(value));
+  }
+
+  function cloneGrid(grid) {
+    return grid.map((row) => row.map((t) => (t ? { ...t } : null)));
   }
 
   function normalizeTile(raw) {
@@ -172,7 +135,7 @@
     const cols = Number.isInteger(level.cols) && level.cols > 0 ? level.cols : maxProvidedCols;
 
     const normalizedGrid = Array.from({ length: rows }, (_, r) =>
-      Array.from({ length: cols }, (_, c) => normalizeTile(level.grid?.[r]?.[c] ?? null)),
+      Array.from({ length: cols }, (_, c) => normalizeTile(level.grid?.[r]?.[c] ?? null))
     );
 
     const normalizedPoolColumns = Array.from({ length: FIXED_POOL_COLS }, (_, colIndex) => {
@@ -181,7 +144,9 @@
     });
 
     const poolRows =
-      Number.isInteger(level.poolRows) && level.poolRows > 0 ? level.poolRows : Math.max(1, ...normalizedPoolColumns.map((col) => col.length));
+      Number.isInteger(level.poolRows) && level.poolRows > 0
+        ? level.poolRows
+        : Math.max(1, ...normalizedPoolColumns.map((col) => col.length));
 
     return {
       ...cloneJson(level),
@@ -196,7 +161,8 @@
   function initLevel(index = 0) {
     game.levelIndex = index;
     game.level = normalizeLevel(LEVELS[index]);
-    game.grid = game.level.grid.map((row) => row.map((t) => (t ? { ...t } : null)));
+    game.grid = cloneGrid(game.level.grid);
+    game.plannedGrid = cloneGrid(game.level.grid);
     game.poolColumns = game.level.poolColumns.map((col) => col.map((d) => ({ ...d })));
     game.tray = [];
     game.state = "running";
@@ -341,7 +307,11 @@
 
     for (let i = 0; i < candidates.length; i += 1) {
       const candidate = candidates[i];
-      const inBounds = candidate.row >= 0 && candidate.row < game.level.rows && candidate.col >= 0 && candidate.col < game.level.cols;
+      const inBounds =
+        candidate.row >= 0 &&
+        candidate.row < game.level.rows &&
+        candidate.col >= 0 &&
+        candidate.col < game.level.cols;
 
       if (!inBounds) continue;
       if (gridRef[candidate.row]?.[candidate.col]?.color === color) return candidate;
@@ -350,8 +320,8 @@
     return null;
   }
 
-  function buildDrillPath(drill) {
-    const virtualGrid = game.grid.map((row) => row.map((t) => (t ? { ...t } : null)));
+  function buildDrillPath(drill, sourceGrid) {
+    const virtualGrid = cloneGrid(sourceGrid);
     const path = [{ row: game.level.rows, col: 0, action: "move" }];
 
     const target = findFirstBottomMatchTarget(virtualGrid, drill.color);
@@ -359,7 +329,7 @@
       for (let c = 0; c < game.level.cols; c += 1) {
         path.push({ row: game.level.rows, col: c, action: "move" });
       }
-      return { path, result: "tray" };
+      return { path, result: "tray", virtualGrid };
     }
 
     for (let c = 0; c <= target.col; c += 1) {
@@ -383,7 +353,7 @@
         }
 
         if (remainingEnergy <= 0) {
-          return { path, result: "depleted" };
+          return { path, result: "depleted", virtualGrid };
         }
 
         // Keep drilling same durable tile until it breaks.
@@ -399,7 +369,7 @@
           continue;
         }
 
-        return { path, result: "tray" };
+        return { path, result: "tray", virtualGrid };
       }
 
       const next = findAdjacentMatch(virtualGrid, row, col, drill.color);
@@ -410,10 +380,10 @@
         continue;
       }
 
-      return { path, result: "tray" };
+      return { path, result: "tray", virtualGrid };
     }
 
-    return { path, result: "depleted" };
+    return { path, result: "depleted", virtualGrid };
   }
 
   function animateToTray(sprite, drill, done) {
@@ -592,7 +562,9 @@
   function deployDrill(drill) {
     if (!canDeploy()) return;
 
-    const resultPackage = buildDrillPath(drill);
+    const resultPackage = buildDrillPath(drill, game.plannedGrid);
+    // Reserve future damage immediately so concurrent drills don't overlap.
+    game.plannedGrid = resultPackage.virtualGrid;
     animateDrill(drill, resultPackage);
   }
 
@@ -721,7 +693,8 @@
         const classes = [];
         if (r > 0) classes.push("stacked");
 
-        const hasRise = r === 0 && game.poolRiseAnimations.some((a) => a.col === c && now - a.createdAt < a.durationMs);
+        const hasRise =
+          r === 0 && game.poolRiseAnimations.some((a) => a.col === c && now - a.createdAt < a.durationMs);
         if (hasRise) {
           classes.push("rise-in");
         }
