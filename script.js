@@ -116,7 +116,7 @@
 
   const FIXED_POOL_COLS = 4;
   const TILE_SIZE_FALLBACK = 52;
-  const STEP_DURATION_MS = 160;
+  const DRILL_SPEED_PX_PER_SEC = 420;
   const TRAY_RETURN_DURATION_MS = 320;
 
   const el = {
@@ -532,8 +532,24 @@
       setStatus(`Drills active: ${game.activeDrills}`);
     }
 
-    let segment = 0;
-    let startedAt = performance.now();
+    const worldPoints = path.map((node) => ({
+      node,
+      pos: gridPoint(node.row, node.col),
+    }));
+
+    const segmentLengths = [];
+    let totalDistance = 0;
+
+    for (let i = 0; i < worldPoints.length - 1; i += 1) {
+      const a = worldPoints[i].pos;
+      const b = worldPoints[i + 1].pos;
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      segmentLengths.push(len);
+      totalDistance += len;
+    }
+
+    const startTs = performance.now();
+    let appliedNodeIndex = 0;
 
     function applyPathAction(node) {
       if (node.action === "destroy") {
@@ -553,6 +569,40 @@
       energyTag.textContent = String(liveDrill.energy);
     }
 
+    function placeAtDistance(distance) {
+      if (worldPoints.length === 1 || totalDistance <= 0) {
+        const p = worldPoints[0].pos;
+        sprite.style.left = `${p.x}px`;
+        sprite.style.top = `${p.y}px`;
+        return;
+      }
+
+      let remaining = distance;
+      let segIndex = 0;
+
+      while (segIndex < segmentLengths.length && remaining > segmentLengths[segIndex]) {
+        remaining -= segmentLengths[segIndex];
+        segIndex += 1;
+      }
+
+      if (segIndex >= segmentLengths.length) {
+        const p = worldPoints[worldPoints.length - 1].pos;
+        sprite.style.left = `${p.x}px`;
+        sprite.style.top = `${p.y}px`;
+        return;
+      }
+
+      const a = worldPoints[segIndex].pos;
+      const b = worldPoints[segIndex + 1].pos;
+      const len = Math.max(1e-6, segmentLengths[segIndex]);
+      const t = remaining / len;
+
+      const x = a.x + (b.x - a.x) * t;
+      const y = a.y + (b.y - a.y) * t;
+      sprite.style.left = `${x}px`;
+      sprite.style.top = `${y}px`;
+    }
+
     function frame(ts) {
       if (game.state === "lost") {
         sprite.remove();
@@ -560,36 +610,33 @@
         return;
       }
 
-      if (segment >= path.length - 1) {
+      const elapsedSec = Math.max(0, ts - startTs) / 1000;
+      const traveled = Math.min(totalDistance, elapsedSec * DRILL_SPEED_PX_PER_SEC);
+
+      // Apply all node actions reached by this frame.
+      let progressed = 0;
+      for (let i = 0; i < segmentLengths.length; i += 1) {
+        progressed += segmentLengths[i];
+
+        const targetNodeIndex = i + 1;
+        while (appliedNodeIndex < targetNodeIndex && traveled >= progressed - 0.0001) {
+          appliedNodeIndex += 1;
+          applyPathAction(worldPoints[appliedNodeIndex].node);
+        }
+      }
+
+      placeAtDistance(traveled);
+
+      if (traveled >= totalDistance - 0.0001) {
         const finalResult = liveDrill.energy <= 0 ? "depleted" : result;
         finalizeDrill(finalResult, liveDrill, sprite);
         return;
       }
 
-      const fromNode = path[segment];
-      const toNode = path[segment + 1];
-
-      const fromPos = gridPoint(fromNode.row, fromNode.col);
-      const toPos = gridPoint(toNode.row, toNode.col);
-
-      const elapsed = ts - startedAt;
-      const t = Math.min(1, elapsed / STEP_DURATION_MS);
-
-      const x = fromPos.x + (toPos.x - fromPos.x) * t;
-      const y = fromPos.y + (toPos.y - fromPos.y) * t;
-      sprite.style.left = `${x}px`;
-      sprite.style.top = `${y}px`;
-
-      if (t >= 1) {
-        segment += 1;
-        startedAt = ts;
-        applyPathAction(toNode);
-      }
-
       requestAnimationFrame(frame);
     }
 
-    const firstPos = gridPoint(path[0].row, path[0].col);
+    const firstPos = worldPoints[0].pos;
     sprite.style.left = `${firstPos.x}px`;
     sprite.style.top = `${firstPos.y}px`;
     requestAnimationFrame(frame);
