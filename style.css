@@ -115,7 +115,7 @@ h2 {
   border-radius: 12px;
   border: 1px dashed #3f496d;
   background: rgb(255 255 255 / 2%);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .tile {
