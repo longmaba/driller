@@ -82,11 +82,11 @@
         ["green", "orange", "orange", "orange", "orange", "green"],
         ["green", "orange", "purple", "purple", "orange", "green"],
         ["green", "orange", { color: "purple", hp: 5 }, "purple", "orange", "green"],
-        ["green", "orange", "purple", "purple", "orange", { color: "green", hp: 10 }],
+        ["green", "orange", "purple", "blue", "orange", { color: "green", hp: 10 }],
         ["green", "orange", "purple", "purple", "orange", "green"],
         ["green", "orange", "orange", "orange", "orange", "green"],
         ["yellow", "yellow", { color: "yellow", hp: 10 }, "yellow", "yellow", "yellow"],
-        ["yellow", "yellow", "yellow", "yellow", "yellow", "yellow"],
+        ["blue", "yellow", "yellow", "yellow", "yellow", "yellow"],
       ],
       poolRows: 2,
       poolColumns: [
@@ -96,6 +96,7 @@
           { color: "yellow", energy: 4 },
         ],
         [
+          { color: "blue", energy: 2 },
           { color: "green", energy: 7 },
           { color: "yellow", energy: 4 },
           { color: "green", energy: 3 },
@@ -310,7 +311,7 @@
     grid: [],
     plannedGrid: [],
     tray: [],
-    trayCapacity: 4,
+    trayCapacity: 5,
     poolColumns: [],
     state: "running", // running | won | lost
     activeDrills: 0,
