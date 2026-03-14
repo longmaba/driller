@@ -2,6 +2,7 @@
   "use strict";
 
   const LEVELS = [
+    // Per pooled drill, set hiddenUntilTopRow: true to mask color until it rises to row 0.
     {
       id: "sample-1",
       rows: 10,
@@ -256,27 +257,27 @@
       poolColumns: [
         [
           { color: "yellow", energy: 7 },
-          { color: "green", energy: 5 },
-          { color: "yellow", energy: 14 },
-          { color: "orange", energy: 5 },
+          { color: "green", energy: 5, hiddenUntilTopRow: true },
+          { color: "yellow", energy: 14, hiddenUntilTopRow: true },
+          { color: "orange", energy: 5, hiddenUntilTopRow: true },
         ],
         [
           { color: "green", energy: 3 },
-          { color: "orange", energy: 5 },
+          { color: "orange", energy: 5, hiddenUntilTopRow: true },
           { color: "green", energy: 7 },
-          { color: "purple", energy: 4 },
+          { color: "purple", energy: 4, hiddenUntilTopRow: true },
         ],
         [
           { color: "orange", energy: 5 },
-          { color: "purple", energy: 12 },
+          { color: "purple", energy: 12, hiddenUntilTopRow: true },
           { color: "orange", energy: 4 },
-          { color: "yellow", energy: 15 },
+          { color: "yellow", energy: 15, hiddenUntilTopRow: true },
         ],
         [
           { color: "purple", energy: 4 },
-          { color: "yellow", energy: 10 },
+          { color: "yellow", energy: 10, hiddenUntilTopRow: true },
           { color: "purple", energy: 8 },
-          { color: "green", energy: 3 },
+          { color: "green", energy: 3, hiddenUntilTopRow: true },
         ],
       ],
     },
@@ -353,7 +354,11 @@
 
     const normalizedPoolColumns = Array.from({ length: FIXED_POOL_COLS }, (_, colIndex) => {
       const sourceCol = level.poolColumns?.[colIndex] || [];
-      return sourceCol.map((drill) => ({ color: drill.color, energy: drill.energy }));
+      return sourceCol.map((drill) => ({
+        color: drill.color,
+        energy: drill.energy,
+        hiddenUntilTopRow: Boolean(drill.hiddenUntilTopRow),
+      }));
     });
 
     const poolRows =
@@ -966,15 +971,16 @@
     el.tilesRemaining.textContent = `Tiles: ${countTiles()}`;
   }
 
-  function makeDrillToken(drill, extraClasses = []) {
+  function makeDrillToken(drill, extraClasses = [], options = {}) {
+    const { hideColor = false } = options;
     const token = document.createElement("div");
-    token.className = `pool-drill color-${drill.color}`;
+    token.className = hideColor ? "pool-drill color-hidden" : `pool-drill color-${drill.color}`;
     if (extraClasses.length) {
       token.classList.add(...extraClasses);
     }
 
     const label = document.createElement("span");
-    label.textContent = drill.color[0].toUpperCase();
+    label.textContent = hideColor ? "?" : drill.color[0].toUpperCase();
 
     const badge = document.createElement("div");
     badge.className = "energy-badge";
@@ -1043,7 +1049,8 @@
           classes.push("rise-in");
         }
 
-        const item = makeDrillToken(drill, classes);
+        const hideColor = Boolean(drill.hiddenUntilTopRow) && r > 0;
+        const item = makeDrillToken(drill, classes, { hideColor });
 
         if (r === 0) {
           hasTopDrill = true;
