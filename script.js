@@ -117,6 +117,7 @@
   const FIXED_POOL_COLS = 4;
   const TILE_SIZE_FALLBACK = 52;
   const DRILL_SPEED_PX_PER_SEC = 420;
+  const DRILL_HIT_HOLD_DISTANCE_PX = 28;
   const TRAY_RETURN_DURATION_MS = 320;
 
   const el = {
@@ -294,6 +295,47 @@
     };
   }
 
+  function spawnDrillDebris(row, col, color, incomingDir = { x: 0, y: -1 }) {
+    const center = gridPoint(row, col);
+    const count = 16;
+
+    const incomingLen = Math.hypot(incomingDir.x, incomingDir.y);
+    const normIncoming =
+      incomingLen > 1e-6 ? { x: incomingDir.x / incomingLen, y: incomingDir.y / incomingLen } : { x: 0, y: -1 };
+
+    // Debris trails behind the drill: opposite of movement direction.
+    const back = { x: -normIncoming.x, y: -normIncoming.y };
+    const perp = { x: -back.y, y: back.x };
+
+    for (let i = 0; i < count; i += 1) {
+      const piece = document.createElement("div");
+      piece.className = `drill-debris color-${color}`;
+
+      const speed = 56 + Math.random() * 54;
+      const backWeight = 0.75 + Math.random() * 0.55;
+      const sideWeight = (Math.random() - 0.5) * 0.9;
+      const dx = (back.x * backWeight + perp.x * sideWeight) * speed;
+      const dy = (back.y * backWeight + perp.y * sideWeight) * speed;
+      const drift = (Math.random() - 0.5) * 18;
+      const size = 6 + Math.random() * 6;
+      const life = 900 + Math.random() * 520;
+
+      piece.style.left = `${center.x}px`;
+      piece.style.top = `${center.y}px`;
+      piece.style.width = `${size}px`;
+      piece.style.height = `${size}px`;
+      piece.style.setProperty("--dx", `${dx.toFixed(2)}px`);
+      piece.style.setProperty("--dy", `${dy.toFixed(2)}px`);
+      piece.style.setProperty("--drift", `${drift.toFixed(2)}px`);
+      piece.style.setProperty("--life", `${life.toFixed(0)}ms`);
+
+      el.grid.appendChild(piece);
+
+      window.setTimeout(() => {
+        piece.remove();
+      }, life + 80);
+    }
+  }
   function removeTopDrillAndShift(colIndex) {
     const col = game.poolColumns[colIndex] || [];
     if (!col.length) return null;
@@ -543,7 +585,22 @@
     for (let i = 0; i < worldPoints.length - 1; i += 1) {
       const a = worldPoints[i].pos;
       const b = worldPoints[i + 1].pos;
-      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      let len = Math.hypot(b.x - a.x, b.y - a.y);
+
+      // Only hold when we hit the same durable tile repeatedly.
+      // This avoids pausing on every normal move->destroy pair.
+      const fromNode = worldPoints[i].node;
+      const toNode = worldPoints[i + 1].node;
+      const repeatedDurableHit =
+        fromNode.action === "destroy" &&
+        toNode.action === "destroy" &&
+        fromNode.row === toNode.row &&
+        fromNode.col === toNode.col;
+
+      if (repeatedDurableHit && len < 0.001) {
+        len = DRILL_HIT_HOLD_DISTANCE_PX;
+      }
+
       segmentLengths.push(len);
       totalDistance += len;
     }
@@ -551,10 +608,26 @@
     const startTs = performance.now();
     let appliedNodeIndex = 0;
 
-    function applyPathAction(node) {
+    const incomingDirs = worldPoints.map(() => ({ x: 0, y: -1 }));
+    for (let i = 1; i < worldPoints.length; i += 1) {
+      const prev = worldPoints[i - 1].pos;
+      const curr = worldPoints[i].pos;
+      const dx = curr.x - prev.x;
+      const dy = curr.y - prev.y;
+      const len = Math.hypot(dx, dy);
+
+      if (len > 1e-6) {
+        incomingDirs[i] = { x: dx / len, y: dy / len };
+      } else {
+        incomingDirs[i] = incomingDirs[i - 1];
+      }
+    }
+
+    function applyPathAction(node, nodeIndex) {
       if (node.action === "destroy") {
         const tile = game.grid[node.row]?.[node.col] ?? null;
         if (tile?.color === liveDrill.color && tile.hp > 0) {
+          spawnDrillDebris(node.row, node.col, liveDrill.color, incomingDirs[nodeIndex]);
           tile.hp = Math.max(0, tile.hp - 1);
           liveDrill.energy = Math.max(0, liveDrill.energy - 1);
 
@@ -621,7 +694,7 @@
         const targetNodeIndex = i + 1;
         while (appliedNodeIndex < targetNodeIndex && traveled >= progressed - 0.0001) {
           appliedNodeIndex += 1;
-          applyPathAction(worldPoints[appliedNodeIndex].node);
+          applyPathAction(worldPoints[appliedNodeIndex].node, appliedNodeIndex);
         }
       }
 
