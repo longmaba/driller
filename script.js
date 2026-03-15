@@ -285,7 +285,16 @@
   ];
 
   const FIXED_POOL_COLS = 4;
-  const TILE_SIZE_FALLBACK = 52;
+  const GAME_WIDTH = 980;
+  const GAME_HEIGHT = 760;
+
+  function getViewportSize() {
+    const doc = document.documentElement;
+    const root = document.getElementById("gameRoot");
+    const width = Math.max(320, Math.floor(root?.clientWidth || doc.clientWidth || window.innerWidth || GAME_WIDTH));
+    const height = Math.max(480, Math.floor(window.innerHeight || doc.clientHeight || GAME_HEIGHT));
+    return { width, height };
+  }
   const DRILL_SPEED_PX_PER_SEC = 420;
   const DRILL_HIT_HOLD_DISTANCE_PX = 28;
   const TRAY_RETURN_DURATION_MS = 320;
@@ -294,9 +303,6 @@
   const MAX_ACTIVE_DRILLS = 5;
 
   const el = {
-    grid: document.getElementById("grid"),
-    traySlots: document.getElementById("traySlots"),
-    poolColumns: document.getElementById("poolColumns"),
     statusText: document.getElementById("statusText"),
     tilesRemaining: document.getElementById("tilesRemaining"),
     restartBtn: document.getElementById("restartBtn"),
@@ -305,7 +311,7 @@
     poolHint: document.getElementById("poolHint"),
   };
 
-  const game = {
+  const state = {
     levelIndex: 0,
     level: null,
     grid: [],
@@ -376,199 +382,25 @@
     };
   }
 
-  function initLevel(index = 0) {
-    game.levelIndex = index;
-    game.level = normalizeLevel(LEVELS[index]);
-    game.grid = cloneGrid(game.level.grid);
-    game.plannedGrid = cloneGrid(game.level.grid);
-    game.poolColumns = game.level.poolColumns.map((col) => col.map((d) => ({ ...d })));
-    game.tray = [];
-    game.state = "running";
-    game.activeDrills = 0;
-    game.poolRiseAnimations = [];
-
-    renderAll();
-    updateLevelUi();
-    setStatus("Deploy drills from pool or tray.");
-  }
-
-  function setStatus(text) {
-    el.statusText.textContent = text;
-  }
-
-  function updateLevelUi() {
-    const current = game.levelIndex + 1;
-    const total = LEVELS.length;
-    el.levelText.textContent = `Level ${current}/${total}`;
-    el.nextLevelBtn.disabled = current >= total;
-  }
-
-  function goToNextLevel() {
-    const nextIndex = game.levelIndex + 1;
-    if (nextIndex >= LEVELS.length) {
-      setStatus("Already at final level.");
-      updateLevelUi();
-      return;
-    }
-
-    initLevel(nextIndex);
-    setStatus(`Loaded level ${nextIndex + 1}.`);
-  }
-
   function countTiles() {
     let total = 0;
-    for (let r = 0; r < game.level.rows; r += 1) {
-      for (let c = 0; c < game.level.cols; c += 1) {
-        if (game.grid[r]?.[c]?.color) total += 1;
+    for (let r = 0; r < state.level.rows; r += 1) {
+      for (let c = 0; c < state.level.cols; c += 1) {
+        if (state.grid[r]?.[c]?.color) total += 1;
       }
     }
     return total;
   }
 
-  function getGridMetrics() {
-    const tiles = el.grid.querySelectorAll(".tile");
-    const gridRect = el.grid.getBoundingClientRect();
-    const fallbackStride = TILE_SIZE_FALLBACK + 8;
-
-    if (!tiles.length) {
-      return {
-        baseX: 12 + TILE_SIZE_FALLBACK / 2,
-        baseY: 12 + TILE_SIZE_FALLBACK / 2,
-        strideX: fallbackStride,
-        strideY: fallbackStride,
-      };
-    }
-
-    const firstRect = tiles[0].getBoundingClientRect();
-    const firstCenterX = firstRect.left + firstRect.width / 2 - gridRect.left;
-    const firstCenterY = firstRect.top + firstRect.height / 2 - gridRect.top;
-
-    let strideX = fallbackStride;
-    if (game.level.cols > 1 && tiles[1]) {
-      const secondRect = tiles[1].getBoundingClientRect();
-      strideX = secondRect.left + secondRect.width / 2 - (firstRect.left + firstRect.width / 2);
-    }
-
-    let strideY = fallbackStride;
-    const secondRowStartIndex = game.level.cols;
-    if (game.level.rows > 1 && tiles[secondRowStartIndex]) {
-      const secondRowRect = tiles[secondRowStartIndex].getBoundingClientRect();
-      strideY = secondRowRect.top + secondRowRect.height / 2 - (firstRect.top + firstRect.height / 2);
-    }
-
-    return {
-      baseX: firstCenterX,
-      baseY: firstCenterY,
-      strideX,
-      strideY,
-    };
-  }
-
-  function gridPoint(row, col) {
-    const metrics = getGridMetrics();
-    return {
-      x: metrics.baseX + col * metrics.strideX,
-      y: metrics.baseY + row * metrics.strideY,
-    };
-  }
-
-  function triggerHitShake(strength = 1) {
-    if (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-
-    const amplitude = HIT_SHAKE_DISTANCE_PX * Math.max(0.8, Math.min(1.6, strength));
-
-    el.grid.animate(
-      [
-        { transform: "translate3d(0, 0, 0)" },
-        { transform: `translate3d(${(-amplitude).toFixed(2)}px, ${(-amplitude * 0.45).toFixed(2)}px, 0)` },
-        { transform: `translate3d(${(amplitude * 0.85).toFixed(2)}px, ${(amplitude * 0.35).toFixed(2)}px, 0)` },
-        { transform: `translate3d(${(-amplitude * 0.35).toFixed(2)}px, ${(amplitude * 0.2).toFixed(2)}px, 0)` },
-        { transform: "translate3d(0, 0, 0)" },
-      ],
-      {
-        duration: HIT_SHAKE_DURATION_MS,
-        easing: "cubic-bezier(0.2, 0.8, 0.25, 1)",
-      },
-    );
-  }
-
-  function spawnDrillDebris(row, col, color, incomingDir = { x: 0, y: -1 }) {
-    const center = gridPoint(row, col);
-    const count = 16;
-
-    const incomingLen = Math.hypot(incomingDir.x, incomingDir.y);
-    const normIncoming = incomingLen > 1e-6 ? { x: incomingDir.x / incomingLen, y: incomingDir.y / incomingLen } : { x: 0, y: -1 };
-
-    // Debris trails behind the drill: opposite of movement direction.
-    const back = { x: -normIncoming.x, y: -normIncoming.y };
-    const perp = { x: -back.y, y: back.x };
-
-    for (let i = 0; i < count; i += 1) {
-      const piece = document.createElement("div");
-      piece.className = `drill-debris color-${color}`;
-
-      const speed = 56 + Math.random() * 54;
-      const backWeight = 0.75 + Math.random() * 0.55;
-      const sideWeight = (Math.random() - 0.5) * 0.9;
-      const dx = (back.x * backWeight + perp.x * sideWeight) * speed;
-      const dy = (back.y * backWeight + perp.y * sideWeight) * speed;
-      const drift = (Math.random() - 0.5) * 18;
-      const size = 6 + Math.random() * 6;
-      const life = 900 + Math.random() * 520;
-
-      piece.style.left = `${center.x}px`;
-      piece.style.top = `${center.y}px`;
-      piece.style.width = `${size}px`;
-      piece.style.height = `${size}px`;
-      piece.style.setProperty("--dx", `${dx.toFixed(2)}px`);
-      piece.style.setProperty("--dy", `${dy.toFixed(2)}px`);
-      piece.style.setProperty("--drift", `${drift.toFixed(2)}px`);
-      piece.style.setProperty("--life", `${life.toFixed(0)}ms`);
-
-      el.grid.appendChild(piece);
-
-      window.setTimeout(() => {
-        piece.remove();
-      }, life + 80);
-    }
-  }
-  function removeTopDrillAndShift(colIndex) {
-    const col = game.poolColumns[colIndex] || [];
-    if (!col.length) return null;
-
-    const shifted = col.length > 1;
-    const removed = col.shift() || null;
-
-    if (shifted) {
-      game.poolRiseAnimations.push({
-        col: colIndex,
-        createdAt: performance.now(),
-        durationMs: 220,
-      });
-    }
-
-    return removed;
-  }
-
-  function canDeploy() {
-    return game.state === "running" && game.activeDrills < MAX_ACTIVE_DRILLS;
-  }
-
-  function canPlaceInTray() {
-    return game.tray.length < game.trayCapacity;
-  }
-
   function getBottomMostRowInCol(gridRef, col) {
-    for (let r = game.level.rows - 1; r >= 0; r -= 1) {
+    for (let r = state.level.rows - 1; r >= 0; r -= 1) {
       if (gridRef[r]?.[col]?.color) return r;
     }
     return -1;
   }
 
   function findFirstBottomMatchTarget(gridRef, color) {
-    for (let c = 0; c < game.level.cols; c += 1) {
+    for (let c = 0; c < state.level.cols; c += 1) {
       const bottomRow = getBottomMostRowInCol(gridRef, c);
       if (bottomRow !== -1 && gridRef[bottomRow][c]?.color === color) {
         return { row: bottomRow, col: c };
@@ -587,8 +419,7 @@
 
     for (let i = 0; i < candidates.length; i += 1) {
       const candidate = candidates[i];
-      const inBounds = candidate.row >= 0 && candidate.row < game.level.rows && candidate.col >= 0 && candidate.col < game.level.cols;
-
+      const inBounds = candidate.row >= 0 && candidate.row < state.level.rows && candidate.col >= 0 && candidate.col < state.level.cols;
       if (!inBounds) continue;
       if (gridRef[candidate.row]?.[candidate.col]?.color === color) return candidate;
     }
@@ -598,18 +429,18 @@
 
   function buildDrillPath(drill, sourceGrid) {
     const virtualGrid = cloneGrid(sourceGrid);
-    const path = [{ row: game.level.rows, col: 0, action: "move" }];
+    const path = [{ row: state.level.rows, col: 0, action: "move" }];
 
     const target = findFirstBottomMatchTarget(virtualGrid, drill.color);
     if (!target) {
-      for (let c = 0; c < game.level.cols; c += 1) {
-        path.push({ row: game.level.rows, col: c, action: "move" });
+      for (let c = 0; c < state.level.cols; c += 1) {
+        path.push({ row: state.level.rows, col: c, action: "move" });
       }
       return { path, result: "tray", virtualGrid };
     }
 
     for (let c = 0; c <= target.col; c += 1) {
-      path.push({ row: game.level.rows, col: c, action: "move" });
+      path.push({ row: state.level.rows, col: c, action: "move" });
     }
 
     let row = target.row;
@@ -632,7 +463,6 @@
           return { path, result: "depleted", virtualGrid };
         }
 
-        // Keep drilling same durable tile until it breaks.
         if (virtualGrid[row][col]) {
           continue;
         }
@@ -662,458 +492,775 @@
     return { path, result: "depleted", virtualGrid };
   }
 
-  function animateToTray(sprite, drill, done) {
-    const slots = [...el.traySlots.querySelectorAll(".slot")];
-    const targetSlot = slots[Math.min(game.tray.length, game.trayCapacity - 1)] || el.traySlots;
-
-    const spriteRect = sprite.getBoundingClientRect();
-    const targetRect = targetSlot.getBoundingClientRect();
-
-    const energyTag = sprite.querySelector(".drill-energy");
-    if (energyTag) energyTag.textContent = String(drill.energy);
-
-    const startX = spriteRect.left + spriteRect.width / 2;
-    const startY = spriteRect.top + spriteRect.height / 2;
-    const endX = targetRect.left + targetRect.width / 2;
-    const endY = targetRect.top + targetRect.height / 2;
-
-    sprite.style.position = "fixed";
-    sprite.style.left = `${startX}px`;
-    sprite.style.top = `${startY}px`;
-    sprite.style.zIndex = "9999";
-    document.body.appendChild(sprite);
-
-    const startedAt = performance.now();
-
-    function frame(ts) {
-      const t = Math.min(1, (ts - startedAt) / TRAY_RETURN_DURATION_MS);
-      const eased = 1 - Math.pow(1 - t, 3);
-
-      const x = startX + (endX - startX) * eased;
-      const y = startY + (endY - startY) * eased;
-      sprite.style.left = `${x}px`;
-      sprite.style.top = `${y}px`;
-
-      if (t >= 1) {
-        sprite.remove();
-        done();
-        return;
-      }
-
-      requestAnimationFrame(frame);
-    }
-
-    requestAnimationFrame(frame);
+  function setStatus(text) {
+    el.statusText.textContent = text;
   }
 
-  function maybeWin() {
-    if (game.state !== "running") return;
-    if (countTiles() !== 0) return;
-
-    game.state = "won";
-    setStatus("All tiles cleared. You win!");
-    renderAll();
+  function updateLevelUi() {
+    const current = state.levelIndex + 1;
+    const total = LEVELS.length;
+    el.levelText.textContent = `Level ${current}/${total}`;
+    el.nextLevelBtn.disabled = current >= total;
   }
 
-  function finalizeDrill(result, drill, sprite) {
-    if (result === "tray" && drill.energy > 0) {
-      if (!canPlaceInTray()) {
-        sprite.remove();
-        game.state = "lost";
-        setStatus("Tray overflow. You lose.");
-        game.activeDrills = Math.max(0, game.activeDrills - 1);
-        renderAll();
-        return;
-      }
+  function canDeploy() {
+    return state.state === "running" && state.activeDrills < MAX_ACTIVE_DRILLS;
+  }
 
-      animateToTray(sprite, drill, () => {
-        game.tray.push({ color: drill.color, energy: drill.energy });
-        game.activeDrills = Math.max(0, game.activeDrills - 1);
+  function canPlaceInTray() {
+    return state.tray.length < state.trayCapacity;
+  }
 
-        if (game.state === "running") {
-          setStatus(`Drill parked in tray (${drill.energy} energy).`);
-        }
+  function removeTopDrillAndShift(colIndex) {
+    const col = state.poolColumns[colIndex] || [];
+    if (!col.length) return null;
 
-        renderAll();
-        maybeWin();
+    const shifted = col.length > 1;
+    const removed = col.shift() || null;
+
+    if (shifted) {
+      state.poolRiseAnimations.push({
+        col: colIndex,
+        createdAt: performance.now(),
+        durationMs: 220,
       });
-      return;
     }
 
-    sprite.remove();
-    game.activeDrills = Math.max(0, game.activeDrills - 1);
-
-    if (result === "depleted" && game.state === "running") {
-      setStatus("Drill depleted and removed.");
-    }
-
-    renderAll();
-    maybeWin();
+    return removed;
   }
 
-  function animateDrill(deployed, resultPackage) {
-    const { path, result } = resultPackage;
-    if (!path.length) return;
-
-    const liveDrill = { ...deployed };
-
-    const sprite = document.createElement("div");
-    sprite.className = `drill-sprite color-${liveDrill.color}`;
-
-    const energyTag = document.createElement("div");
-    energyTag.className = "drill-energy";
-    energyTag.textContent = String(liveDrill.energy);
-
-    sprite.appendChild(energyTag);
-    el.grid.appendChild(sprite);
-
-    game.activeDrills += 1;
-    if (game.state === "running") {
-      setStatus(`Drills active: ${game.activeDrills}`);
+  class BootScene extends Phaser.Scene {
+    constructor() {
+      super("BootScene");
     }
 
-    const worldPoints = path.map((node) => ({
-      node,
-      pos: gridPoint(node.row, node.col),
-    }));
+    preload() {
+      this.load.image("tile-blue", "assets/blue.png");
+      this.load.image("tile-green", "assets/green.png");
+      this.load.image("tile-orange", "assets/orange.png");
+      this.load.image("tile-purple", "assets/purple.png");
+      this.load.image("tile-yellow", "assets/yellow.png");
+      this.load.image("drill-blue", "assets/driller_blue.png");
+      this.load.image("drill-green", "assets/driller_green.png");
+      this.load.image("drill-orange", "assets/driller_orange.png");
+      this.load.image("drill-purple", "assets/driller_purple.png");
+      this.load.image("drill-yellow", "assets/driller_yellow.png");
+      this.load.image("drill-side-blue", "assets/driller_blue_side.png");
+      this.load.image("drill-side-green", "assets/driller_green_side.png");
+      this.load.image("drill-side-orange", "assets/driller_orange_side.png");
+      this.load.image("drill-side-purple", "assets/driller_purple_side.png");
+      this.load.image("drill-side-yellow", "assets/driller_yellow_side.png");
+    }
 
-    const segmentLengths = [];
-    let totalDistance = 0;
+    create() {
+      this.scene.start("PlayScene");
+    }
+  }
 
-    for (let i = 0; i < worldPoints.length - 1; i += 1) {
-      const a = worldPoints[i].pos;
-      const b = worldPoints[i + 1].pos;
-      let len = Math.hypot(b.x - a.x, b.y - a.y);
+  class PlayScene extends Phaser.Scene {
+    constructor() {
+      super("PlayScene");
+      this.layout = null;
+      this.activeDrillEntities = [];
+      this.traySlotPoints = [];
+    }
 
-      // Only hold when we hit the same durable tile repeatedly.
-      // This avoids pausing on every normal move->destroy pair.
-      const fromNode = worldPoints[i].node;
-      const toNode = worldPoints[i + 1].node;
-      const repeatedDurableHit =
-        fromNode.action === "destroy" && toNode.action === "destroy" && fromNode.row === toNode.row && fromNode.col === toNode.col;
+    create() {
+      playSceneRef = this;
 
-      if (repeatedDurableHit && len < 0.001) {
-        len = DRILL_HIT_HOLD_DISTANCE_PX;
+      this.gridLayer = this.add.container(0, 0);
+      this.poolLayer = this.add.container(0, 0);
+      this.trayLayer = this.add.container(0, 0);
+      this.drillLayer = this.add.container(0, 0);
+      this.fxLayer = this.add.container(0, 0);
+
+      this.scale.on("resize", () => {
+        if (!state.level) return;
+        this.recalculateLayout();
+        this.renderAll();
+      });
+
+      this.initLevel(0);
+    }
+
+    colorToTexture(color) {
+      return `tile-${color}`;
+    }
+
+    colorToDrillTexture(color) {
+      return `drill-${color}`;
+    }
+
+    colorToDrillSideTexture(color) {
+      return `drill-side-${color}`;
+    }
+
+    directionBetweenPoints(from, to) {
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      if (Math.abs(dx) < 1e-6 && Math.abs(dy) < 1e-6) return null;
+
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        return { x: Math.sign(dx), y: 0 };
+      }
+      return { x: 0, y: Math.sign(dy) };
+    }
+
+    orientDrillSprite(icon, color, dir) {
+      if (!dir) return;
+
+      if (dir.x !== 0) {
+        icon.setTexture(this.colorToDrillSideTexture(color));
+        icon.setFlipX(false);
+        icon.setFlipY(false);
+        icon.setAngle(dir.x < 0 ? 180 : 0);
+        return;
       }
 
-      segmentLengths.push(len);
-      totalDistance += len;
+      icon.setTexture(this.colorToDrillTexture(color));
+      icon.setFlipX(false);
+      icon.setFlipY(false);
+      icon.setAngle(dir.y < 0 ? 0 : 180);
     }
 
-    const startTs = performance.now();
-    let appliedNodeIndex = 0;
+    fitImageToBox(image, maxWidth, maxHeight) {
+      const src = image.texture?.getSourceImage?.();
+      const srcW = Number(src?.width) || image.width || maxWidth;
+      const srcH = Number(src?.height) || image.height || maxHeight;
+      const scale = Math.min(maxWidth / srcW, maxHeight / srcH);
+      image.setDisplaySize(srcW * scale, srcH * scale);
+      return image;
+    }
 
-    const incomingDirs = worldPoints.map(() => ({ x: 0, y: -1 }));
-    for (let i = 1; i < worldPoints.length; i += 1) {
-      const prev = worldPoints[i - 1].pos;
-      const curr = worldPoints[i].pos;
-      const dx = curr.x - prev.x;
-      const dy = curr.y - prev.y;
-      const len = Math.hypot(dx, dy);
+    getGridPoint(row, col) {
+      const { grid } = this.layout;
+      return {
+        x: grid.x + col * (grid.tileSize + grid.gapX),
+        y: grid.y + row * (grid.tileSize + grid.gapY),
+      };
+    }
 
-      if (len > 1e-6) {
-        incomingDirs[i] = { x: dx / len, y: dy / len };
+    recalculateLayout() {
+      const padding = 28;
+      const sectionGap = 26;
+      const rowGap = 10;
+      const width = this.scale.width;
+      const height = this.scale.height;
+
+      const poolRows = state.level.poolRows;
+      const rows = state.level.rows;
+      const cols = state.level.cols;
+
+      const tileGapX = -19;
+      const tileGapY = -20;
+      const availableW = width - padding * 2;
+      const availableH = height - padding * 2;
+      const maxPoolCell = 58;
+      const maxGridTile = 60;
+
+      const poolCellByW = Math.floor((availableW - (FIXED_POOL_COLS - 1) * rowGap) / FIXED_POOL_COLS);
+      const poolCellByH = Math.floor((availableH * 0.24 - Math.max(0, poolRows - 1) * rowGap) / Math.max(1, poolRows));
+      const poolCell = Math.max(34, Math.min(maxPoolCell, poolCellByW, poolCellByH));
+      const poolHeight = poolRows * poolCell + Math.max(0, poolRows - 1) * rowGap;
+
+      const trayCellByW = Math.floor((availableW - Math.max(0, state.trayCapacity - 1) * rowGap) / state.trayCapacity);
+      const trayCell = Math.max(36, Math.min(62, trayCellByW));
+      const trayHeight = trayCell;
+
+      const gridHeightBudget = availableH - poolHeight - trayHeight - sectionGap * 2;
+      const gridWidthBudget = availableW;
+      const tileByW = Math.floor((gridWidthBudget - Math.max(0, cols - 1) * tileGapX) / cols);
+      const tileByH = Math.floor((gridHeightBudget - Math.max(0, rows - 1) * tileGapY) / rows);
+      const tileSize = Math.max(22, Math.min(maxGridTile, tileByW, tileByH));
+
+      const gridWidth = cols * tileSize + Math.max(0, cols - 1) * tileGapX;
+      const gridHeight = rows * tileSize + Math.max(0, rows - 1) * tileGapY;
+
+      const poolWidth = FIXED_POOL_COLS * poolCell + Math.max(0, FIXED_POOL_COLS - 1) * rowGap;
+      const trayWidth = state.trayCapacity * trayCell + Math.max(0, state.trayCapacity - 1) * rowGap;
+
+      const gridX0 = (width - gridWidth) / 2 + tileSize / 2;
+      const gridY0 = padding + tileSize / 2;
+      const trayX0 = (width - trayWidth) / 2;
+      const trayY0 = gridY0 + (rows - 1) * (tileSize + tileGapY) + tileSize / 2 + sectionGap;
+      const poolX0 = (width - poolWidth) / 2;
+      const poolY0 = trayY0 + trayHeight + sectionGap;
+
+      this.layout = {
+        pool: { x: poolX0, y: poolY0, cell: poolCell, rowGap, rows: poolRows },
+        grid: { x: gridX0, y: gridY0, tileSize, gapX: tileGapX, gapY: tileGapY, rows, cols },
+        tray: { x: trayX0, y: trayY0, cell: trayCell, gap: rowGap },
+      };
+    }
+
+    clearLayer(layer) {
+      layer.removeAll(true);
+    }
+
+    makeDrillToken(x, y, size, drill, hideColor) {
+      const token = this.add.container(x, y);
+      const inset = Math.floor(size * 0.9);
+      if (hideColor) {
+        const q = this.add
+          .text(0, -size * 0.02, "?", {
+            fontFamily: "Inter, Segoe UI, sans-serif",
+            fontSize: `${Math.max(14, Math.floor(size * 0.38))}px`,
+            color: "#ffffff",
+            fontStyle: "700",
+          })
+          .setOrigin(0.5);
+        token.add(q);
       } else {
-        incomingDirs[i] = incomingDirs[i - 1];
+        const drillSprite = this.add.image(0, -size * 0.05, this.colorToDrillTexture(drill.color));
+        this.fitImageToBox(drillSprite, inset, inset);
+        token.add(drillSprite);
       }
+
+      const badgeW = Math.max(20, Math.floor(size * 0.56));
+      const badgeH = Math.max(16, Math.floor(size * 0.32));
+      const badge = this.add.rectangle(0, size * 0.33, badgeW, badgeH, 0x0f1323, 0.96).setStrokeStyle(1, 0x7b85a6, 1);
+      const energy = this.add
+        .text(0, size * 0.33, String(drill.energy), {
+          fontFamily: "Inter, Segoe UI, sans-serif",
+          fontSize: `${Math.max(10, Math.floor(size * 0.2))}px`,
+          color: "#ecf2ff",
+          fontStyle: "700",
+        })
+        .setOrigin(0.5);
+      token.add([badge, energy]);
+
+      token.energyText = energy;
+      return token;
     }
 
-    function applyPathAction(node, nodeIndex) {
-      if (node.action === "destroy") {
-        const tile = game.grid[node.row]?.[node.col] ?? null;
-        if (tile?.color === liveDrill.color && tile.hp > 0) {
-          spawnDrillDebris(node.row, node.col, liveDrill.color, incomingDirs[nodeIndex]);
-          triggerHitShake(1);
-          tile.hp = Math.max(0, tile.hp - 1);
-          liveDrill.energy = Math.max(0, liveDrill.energy - 1);
+    renderGrid() {
+      this.clearLayer(this.gridLayer);
+      const { rows, cols, tileSize } = this.layout.grid;
 
-          if (tile.hp <= 0) {
-            game.grid[node.row][node.col] = null;
+      for (let r = 0; r < rows; r += 1) {
+        for (let c = 0; c < cols; c += 1) {
+          const point = this.getGridPoint(r, c);
+          const tileData = state.grid[r]?.[c] ?? null;
+
+          if (!tileData?.color) {
+            continue;
           }
 
-          renderGrid();
-          maybeWin();
+          const sprite = this.add.image(point.x, point.y, this.colorToTexture(tileData.color));
+          this.fitImageToBox(sprite, tileSize, tileSize);
+          this.gridLayer.add(sprite);
+
+          if (tileData.hp > 1) {
+            const hp = this.add
+              .text(point.x + tileSize * 0.28, point.y - tileSize * 0.3, String(tileData.hp), {
+                fontFamily: "Inter, Segoe UI, sans-serif",
+                fontSize: `${Math.max(11, Math.floor(tileSize * 0.24))}px`,
+                color: "#ffffff",
+                fontStyle: "700",
+                stroke: "#0b0f1d",
+                strokeThickness: 3,
+              })
+              .setOrigin(0.5);
+            this.gridLayer.add(hp);
+          }
         }
       }
-      energyTag.textContent = String(liveDrill.energy);
+
+      el.tilesRemaining.textContent = `Tiles: ${countTiles()}`;
     }
 
-    function placeAtDistance(distance) {
-      if (worldPoints.length === 1 || totalDistance <= 0) {
-        const p = worldPoints[0].pos;
-        sprite.style.left = `${p.x}px`;
-        sprite.style.top = `${p.y}px`;
+    renderTray() {
+      this.clearLayer(this.trayLayer);
+      this.traySlotPoints = [];
+
+      const { x, y, cell, gap } = this.layout.tray;
+
+      for (let i = 0; i < state.trayCapacity; i += 1) {
+        const slotX = x + i * (cell + gap) + cell / 2;
+        const slotY = y + cell / 2;
+        this.traySlotPoints[i] = { x: slotX, y: slotY };
+
+        const indicator = this.add.rectangle(slotX, slotY, cell, cell, 0xffffff, 0.08).setStrokeStyle(1, 0x8b7a63, 0.28);
+        this.trayLayer.add(indicator);
+
+        const slot = this.add.zone(slotX, slotY, cell, cell);
+        this.trayLayer.add(slot);
+
+        const drill = state.tray[i];
+        if (!drill) continue;
+
+        const token = this.makeDrillToken(slotX, slotY, Math.floor(cell * 0.92), drill, false);
+        this.trayLayer.add(token);
+
+        if (canDeploy()) {
+          slot.setInteractive({ useHandCursor: true });
+          slot.on("pointerdown", () => this.tryDeployFromTray(i));
+        } else {
+          token.setAlpha(0.65);
+        }
+      }
+    }
+
+    renderPool() {
+      this.clearLayer(this.poolLayer);
+      const now = performance.now();
+      state.poolRiseAnimations = state.poolRiseAnimations.filter((a) => now - a.createdAt < a.durationMs + 40);
+
+      const { x, y, cell, rowGap, rows } = this.layout.pool;
+      let hasTopDrill = false;
+
+      for (let c = 0; c < FIXED_POOL_COLS; c += 1) {
+        for (let r = 0; r < rows; r += 1) {
+          const drawX = x + c * (cell + rowGap) + cell / 2;
+          const drawY = y + r * (cell + rowGap) + cell / 2;
+          const drill = state.poolColumns[c]?.[r] || null;
+
+          const slot = this.add.zone(drawX, drawY, cell, cell);
+          this.poolLayer.add(slot);
+
+          if (!drill) continue;
+
+          const hideColor = Boolean(drill.hiddenUntilTopRow) && r > 0;
+          const token = this.makeDrillToken(drawX, drawY, Math.floor(cell * 0.92), drill, hideColor);
+          this.poolLayer.add(token);
+
+          if (r === 0) {
+            hasTopDrill = true;
+
+            const hasRise = state.poolRiseAnimations.some((a) => a.col === c && now - a.createdAt < a.durationMs);
+            if (hasRise) {
+              token.y -= Math.min(20, cell * 0.35);
+              token.alpha = 0.2;
+              this.tweens.add({
+                targets: token,
+                y: drawY,
+                alpha: 1,
+                duration: 220,
+                ease: "Cubic.Out",
+              });
+            }
+
+            if (canDeploy()) {
+              slot.setInteractive({ useHandCursor: true });
+              slot.on("pointerdown", () => this.tryDeploy(c));
+            } else {
+              token.setAlpha(0.65);
+            }
+          } else {
+            token.setAlpha(hideColor ? 0.7 : 0.84);
+          }
+        }
+      }
+
+      if (state.state === "won") {
+        el.poolHint.textContent = "Victory";
+      } else if (state.state === "lost") {
+        el.poolHint.textContent = "Defeat";
+      } else if (!hasTopDrill && state.tray.length === 0) {
+        el.poolHint.textContent = "No drills left";
+      } else {
+        el.poolHint.textContent = "Top row + tray deployable";
+      }
+    }
+
+    renderAll() {
+      this.renderGrid();
+      this.renderTray();
+      this.renderPool();
+    }
+
+    triggerHitShake(strength = 1) {
+      if (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        return;
+      }
+
+      const intensity = (HIT_SHAKE_DISTANCE_PX * Math.max(0.8, Math.min(1.6, strength))) / GAME_WIDTH;
+      this.cameras.main.shake(HIT_SHAKE_DURATION_MS, intensity, true);
+    }
+
+    spawnDrillDebris(row, col, color, incomingDir = { x: 0, y: -1 }) {
+      const center = this.getGridPoint(row, col);
+      const incomingLen = Math.hypot(incomingDir.x, incomingDir.y);
+      const normIncoming = incomingLen > 1e-6 ? { x: incomingDir.x / incomingLen, y: incomingDir.y / incomingLen } : { x: 0, y: -1 };
+      const back = { x: -normIncoming.x, y: -normIncoming.y };
+      const baseAngle = Phaser.Math.RadToDeg(Math.atan2(back.y, back.x));
+
+      const count = 16;
+      for (let i = 0; i < count; i += 1) {
+        const speed = Phaser.Math.Between(56, 110);
+        const angleDeg = Phaser.Math.FloatBetween(baseAngle - 35, baseAngle + 35);
+        const angle = Phaser.Math.DegToRad(angleDeg);
+        const life = Phaser.Math.Between(220, 380);
+
+        const piece = this.add.image(center.x, center.y, this.colorToTexture(color)).setDisplaySize(8, 8).setAlpha(0.9).setDepth(20);
+
+        this.fxLayer.add(piece);
+
+        this.tweens.add({
+          targets: piece,
+          x: center.x + Math.cos(angle) * speed * (life / 1000),
+          y: center.y + Math.sin(angle) * speed * (life / 1000) + 24,
+          alpha: 0,
+          angle: Phaser.Math.Between(-160, 160),
+          duration: life,
+          ease: "Quad.Out",
+          onComplete: () => piece.destroy(),
+        });
+      }
+    }
+
+    maybeWin() {
+      if (state.state !== "running") return;
+      if (countTiles() !== 0) return;
+
+      state.state = "won";
+      setStatus("All tiles cleared. You win!");
+      this.renderAll();
+
+      if (state.levelIndex + 1 < LEVELS.length) {
+        this.time.delayedCall(650, () => {
+          if (state.state === "won") {
+            this.goToNextLevel();
+          }
+        });
+      }
+    }
+
+    animateToTray(entity, drill, done) {
+      const targetIndex = Math.min(state.tray.length, state.trayCapacity - 1);
+      const targetPoint = this.traySlotPoints[targetIndex] || this.traySlotPoints[state.trayCapacity - 1] || { x: 0, y: 0 };
+      if (entity.energyText) entity.energyText.setText(String(drill.energy));
+
+      this.tweens.add({
+        targets: entity.container,
+        x: targetPoint.x,
+        y: targetPoint.y,
+        duration: TRAY_RETURN_DURATION_MS,
+        ease: "Cubic.Out",
+        onComplete: () => {
+          entity.container.destroy();
+          done();
+        },
+      });
+    }
+
+    finalizeDrill(result, drill, entity) {
+      if (result === "tray" && drill.energy > 0) {
+        if (!canPlaceInTray()) {
+          entity.container.destroy();
+          state.state = "lost";
+          setStatus("Tray overflow. You lose.");
+          state.activeDrills = Math.max(0, state.activeDrills - 1);
+          this.renderAll();
+          return;
+        }
+
+        this.animateToTray(entity, drill, () => {
+          state.tray.push({ color: drill.color, energy: drill.energy });
+          state.activeDrills = Math.max(0, state.activeDrills - 1);
+
+          if (state.state === "running") {
+            setStatus(`Drill parked in tray (${drill.energy} energy).`);
+          }
+
+          this.renderAll();
+          this.maybeWin();
+        });
+        return;
+      }
+
+      entity.container.destroy();
+      state.activeDrills = Math.max(0, state.activeDrills - 1);
+
+      if (result === "depleted" && state.state === "running") {
+        setStatus("Drill depleted and removed.");
+      }
+
+      this.renderAll();
+      this.maybeWin();
+    }
+
+    animateDrill(deployed, resultPackage) {
+      const { path, result } = resultPackage;
+      if (!path.length) return;
+
+      const liveDrill = { ...deployed };
+      const worldPoints = path.map((node) => ({ node, pos: this.getGridPoint(node.row, node.col) }));
+
+      const iconSize = Math.max(22, Math.floor(this.layout.grid.tileSize * 0.95));
+      const container = this.add.container(worldPoints[0].pos.x, worldPoints[0].pos.y);
+      const icon = this.add.image(0, 0, this.colorToDrillTexture(liveDrill.color));
+      this.orientDrillSprite(icon, liveDrill.color, { x: 1, y: 0 });
+      this.fitImageToBox(icon, iconSize, iconSize);
+      const energyText = this.add
+        .text(0, -iconSize * 0.62, String(liveDrill.energy), {
+          fontFamily: "Inter, Segoe UI, sans-serif",
+          fontSize: `${Math.max(10, Math.floor(iconSize * 0.28))}px`,
+          color: "#ffffff",
+          fontStyle: "700",
+          stroke: "#0b0f1d",
+          strokeThickness: 3,
+        })
+        .setOrigin(0.5);
+
+      container.add([icon, energyText]);
+      this.drillLayer.add(container);
+
+      state.activeDrills += 1;
+      if (state.state === "running") {
+        setStatus(`Drills active: ${state.activeDrills}`);
+      }
+
+      const segmentLengths = [];
+      const segmentEnds = [];
+      let totalDistance = 0;
+
+      for (let i = 0; i < worldPoints.length - 1; i += 1) {
+        const a = worldPoints[i].pos;
+        const b = worldPoints[i + 1].pos;
+        let len = Math.hypot(b.x - a.x, b.y - a.y);
+
+        const fromNode = worldPoints[i].node;
+        const toNode = worldPoints[i + 1].node;
+        const repeatedDurableHit =
+          fromNode.action === "destroy" && toNode.action === "destroy" && fromNode.row === toNode.row && fromNode.col === toNode.col;
+
+        if (repeatedDurableHit && len < 0.001) {
+          len = DRILL_HIT_HOLD_DISTANCE_PX;
+        }
+
+        segmentLengths.push(len);
+        totalDistance += len;
+        segmentEnds.push(totalDistance);
+      }
+
+      const incomingDirs = worldPoints.map(() => ({ x: 0, y: -1 }));
+      for (let i = 1; i < worldPoints.length; i += 1) {
+        const prev = worldPoints[i - 1].pos;
+        const curr = worldPoints[i].pos;
+        const dx = curr.x - prev.x;
+        const dy = curr.y - prev.y;
+        const len = Math.hypot(dx, dy);
+        incomingDirs[i] = len > 1e-6 ? { x: dx / len, y: dy / len } : incomingDirs[i - 1];
+      }
+
+      const entity = {
+        container,
+        icon,
+        energyText,
+        liveDrill,
+        result,
+        worldPoints,
+        segmentLengths,
+        segmentEnds,
+        totalDistance,
+        traveled: 0,
+        appliedNodeIndex: 0,
+        incomingDirs,
+      };
+
+      this.activeDrillEntities.push(entity);
+    }
+
+    applyPathAction(entity, node, nodeIndex) {
+      if (node.action === "destroy") {
+        const tile = state.grid[node.row]?.[node.col] ?? null;
+        if (tile?.color === entity.liveDrill.color && tile.hp > 0) {
+          this.spawnDrillDebris(node.row, node.col, entity.liveDrill.color, entity.incomingDirs[nodeIndex]);
+          this.triggerHitShake(1);
+
+          tile.hp = Math.max(0, tile.hp - 1);
+          entity.liveDrill.energy = Math.max(0, entity.liveDrill.energy - 1);
+
+          if (tile.hp <= 0) {
+            state.grid[node.row][node.col] = null;
+          }
+
+          this.renderGrid();
+          this.maybeWin();
+        }
+      }
+
+      entity.energyText.setText(String(entity.liveDrill.energy));
+    }
+
+    placeAtDistance(entity, distance) {
+      if (entity.worldPoints.length === 1 || entity.totalDistance <= 0) {
+        const p = entity.worldPoints[0].pos;
+        entity.container.setPosition(p.x, p.y);
         return;
       }
 
       let remaining = distance;
       let segIndex = 0;
 
-      while (segIndex < segmentLengths.length && remaining > segmentLengths[segIndex]) {
-        remaining -= segmentLengths[segIndex];
+      while (segIndex < entity.segmentLengths.length && remaining > entity.segmentLengths[segIndex]) {
+        remaining -= entity.segmentLengths[segIndex];
         segIndex += 1;
       }
 
-      if (segIndex >= segmentLengths.length) {
-        const p = worldPoints[worldPoints.length - 1].pos;
-        sprite.style.left = `${p.x}px`;
-        sprite.style.top = `${p.y}px`;
+      if (segIndex >= entity.segmentLengths.length) {
+        const p = entity.worldPoints[entity.worldPoints.length - 1].pos;
+        entity.container.setPosition(p.x, p.y);
         return;
       }
 
-      const a = worldPoints[segIndex].pos;
-      const b = worldPoints[segIndex + 1].pos;
-      const len = Math.max(1e-6, segmentLengths[segIndex]);
+      const a = entity.worldPoints[segIndex].pos;
+      const b = entity.worldPoints[segIndex + 1].pos;
+      const len = Math.max(1e-6, entity.segmentLengths[segIndex]);
       const t = remaining / len;
+      entity.container.setPosition(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
 
-      const x = a.x + (b.x - a.x) * t;
-      const y = a.y + (b.y - a.y) * t;
-      sprite.style.left = `${x}px`;
-      sprite.style.top = `${y}px`;
+      const moveDir = this.directionBetweenPoints(a, b);
+      if (moveDir) {
+        this.orientDrillSprite(entity.icon, entity.liveDrill.color, moveDir);
+        this.fitImageToBox(entity.icon, entity.icon.displayWidth, entity.icon.displayHeight);
+      }
     }
 
-    function frame(ts) {
-      if (game.state === "lost") {
-        sprite.remove();
-        game.activeDrills = Math.max(0, game.activeDrills - 1);
+    deployDrill(drill) {
+      if (!canDeploy()) return;
+
+      const resultPackage = buildDrillPath(drill, state.plannedGrid);
+      state.plannedGrid = resultPackage.virtualGrid;
+      this.animateDrill(drill, resultPackage);
+      this.renderPool();
+      this.renderTray();
+    }
+
+    tryDeploy(colIndex) {
+      if (state.state !== "running") return;
+      if (state.activeDrills >= MAX_ACTIVE_DRILLS) {
+        setStatus(`Active drill limit reached (${MAX_ACTIVE_DRILLS}). Wait for one to finish.`);
+        return;
+      }
+      if (!canDeploy()) return;
+
+      const top = state.poolColumns[colIndex]?.[0] || null;
+      if (!top) return;
+
+      const deployed = removeTopDrillAndShift(colIndex);
+      if (!deployed) return;
+
+      this.renderPool();
+      this.deployDrill(deployed);
+    }
+
+    tryDeployFromTray(trayIndex) {
+      if (state.state !== "running") return;
+      if (state.activeDrills >= MAX_ACTIVE_DRILLS) {
+        setStatus(`Active drill limit reached (${MAX_ACTIVE_DRILLS}). Wait for one to finish.`);
+        return;
+      }
+      if (!canDeploy()) return;
+
+      const trayDrill = state.tray[trayIndex] || null;
+      if (!trayDrill) return;
+
+      const deployed = state.tray.splice(trayIndex, 1)[0];
+      this.renderTray();
+      this.deployDrill(deployed);
+    }
+
+    initLevel(index = 0) {
+      state.levelIndex = index;
+      state.level = normalizeLevel(LEVELS[index]);
+      state.grid = cloneGrid(state.level.grid);
+      state.plannedGrid = cloneGrid(state.level.grid);
+      state.poolColumns = state.level.poolColumns.map((col) => col.map((d) => ({ ...d })));
+      state.tray = [];
+      state.state = "running";
+      state.activeDrills = 0;
+      state.poolRiseAnimations = [];
+
+      this.activeDrillEntities.forEach((entity) => entity.container.destroy());
+      this.activeDrillEntities = [];
+
+      this.recalculateLayout();
+      this.renderAll();
+      updateLevelUi();
+      setStatus("Deploy drills from pool or tray.");
+    }
+
+    goToNextLevel() {
+      const nextIndex = state.levelIndex + 1;
+      if (nextIndex >= LEVELS.length) {
+        setStatus("Already at final level.");
+        updateLevelUi();
         return;
       }
 
-      const elapsedSec = Math.max(0, ts - startTs) / 1000;
-      const traveled = Math.min(totalDistance, elapsedSec * DRILL_SPEED_PX_PER_SEC);
-
-      // Apply all node actions reached by this frame.
-      let progressed = 0;
-      for (let i = 0; i < segmentLengths.length; i += 1) {
-        progressed += segmentLengths[i];
-
-        const targetNodeIndex = i + 1;
-        while (appliedNodeIndex < targetNodeIndex && traveled >= progressed - 0.0001) {
-          appliedNodeIndex += 1;
-          applyPathAction(worldPoints[appliedNodeIndex].node, appliedNodeIndex);
-        }
-      }
-
-      placeAtDistance(traveled);
-
-      if (traveled >= totalDistance - 0.0001) {
-        const finalResult = liveDrill.energy <= 0 ? "depleted" : result;
-        finalizeDrill(finalResult, liveDrill, sprite);
-        return;
-      }
-
-      requestAnimationFrame(frame);
+      this.initLevel(nextIndex);
+      setStatus(`Loaded level ${nextIndex + 1}.`);
     }
 
-    const firstPos = worldPoints[0].pos;
-    sprite.style.left = `${firstPos.x}px`;
-    sprite.style.top = `${firstPos.y}px`;
-    requestAnimationFrame(frame);
-  }
+    update(_time, delta) {
+      if (!this.activeDrillEntities.length) return;
 
-  function deployDrill(drill) {
-    if (!canDeploy()) return;
+      const deltaSec = Math.max(0, delta) / 1000;
+      const survivors = [];
 
-    const resultPackage = buildDrillPath(drill, game.plannedGrid);
-    // Reserve future damage immediately so concurrent drills don't overlap.
-    game.plannedGrid = resultPackage.virtualGrid;
-    animateDrill(drill, resultPackage);
-  }
+      for (let i = 0; i < this.activeDrillEntities.length; i += 1) {
+        const entity = this.activeDrillEntities[i];
 
-  function tryDeploy(colIndex) {
-    if (game.state !== "running") return;
-    if (game.activeDrills >= MAX_ACTIVE_DRILLS) {
-      setStatus(`Active drill limit reached (${MAX_ACTIVE_DRILLS}). Wait for one to finish.`);
-      return;
-    }
-
-    if (!canDeploy()) return;
-
-    const top = game.poolColumns[colIndex]?.[0] || null;
-    if (!top) return;
-
-    const deployed = removeTopDrillAndShift(colIndex);
-    if (!deployed) return;
-
-    renderPool();
-    deployDrill(deployed);
-  }
-
-  function tryDeployFromTray(trayIndex) {
-    if (game.state !== "running") return;
-    if (game.activeDrills >= MAX_ACTIVE_DRILLS) {
-      setStatus(`Active drill limit reached (${MAX_ACTIVE_DRILLS}). Wait for one to finish.`);
-      return;
-    }
-
-    if (!canDeploy()) return;
-
-    const trayDrill = game.tray[trayIndex] || null;
-    if (!trayDrill) return;
-
-    const deployed = game.tray.splice(trayIndex, 1)[0];
-    renderTray();
-    deployDrill(deployed);
-  }
-
-  function renderGrid() {
-    const rows = game.level.rows;
-    const cols = game.level.cols;
-
-    el.grid.style.gridTemplateColumns = `repeat(${cols}, var(--tile-size))`;
-    el.grid.querySelectorAll(".tile").forEach((tile) => tile.remove());
-
-    for (let r = 0; r < rows; r += 1) {
-      for (let c = 0; c < cols; c += 1) {
-        const tileData = game.grid[r]?.[c] ?? null;
-        const tile = document.createElement("div");
-        tile.className = "tile";
-
-        if (!tileData?.color) {
-          tile.classList.add("empty");
-        } else {
-          tile.classList.add(`color-${tileData.color}`);
-          if (tileData.hp > 1) {
-            tile.dataset.hp = String(tileData.hp);
-          }
-        }
-
-        el.grid.appendChild(tile);
-      }
-    }
-
-    el.tilesRemaining.textContent = `Tiles: ${countTiles()}`;
-  }
-
-  function makeDrillToken(drill, extraClasses = [], options = {}) {
-    const { hideColor = false } = options;
-    const token = document.createElement("div");
-    token.className = hideColor ? "pool-drill color-hidden" : `pool-drill color-${drill.color}`;
-    if (extraClasses.length) {
-      token.classList.add(...extraClasses);
-    }
-
-    const label = document.createElement("span");
-    label.textContent = hideColor ? "?" : drill.color[0].toUpperCase();
-
-    const badge = document.createElement("div");
-    badge.className = "energy-badge";
-    badge.textContent = String(drill.energy);
-
-    token.appendChild(label);
-    token.appendChild(badge);
-    return token;
-  }
-
-  function renderTray() {
-    el.traySlots.innerHTML = "";
-
-    for (let i = 0; i < game.trayCapacity; i += 1) {
-      const slot = document.createElement("div");
-      slot.className = "slot";
-
-      const drill = game.tray[i];
-      if (drill) {
-        slot.classList.add("full");
-        const token = makeDrillToken(drill);
-
-        if (canDeploy()) {
-          token.classList.add("tray-deployable");
-          token.title = "Tap to deploy from tray";
-          token.addEventListener("click", () => tryDeployFromTray(i));
-        } else {
-          token.classList.add("disabled");
-        }
-
-        slot.appendChild(token);
-      }
-
-      el.traySlots.appendChild(slot);
-    }
-  }
-
-  function renderPool() {
-    const now = performance.now();
-    game.poolRiseAnimations = game.poolRiseAnimations.filter((a) => now - a.createdAt < a.durationMs + 30);
-
-    el.poolColumns.innerHTML = "";
-
-    let hasTopDrill = false;
-    const rows = game.level.poolRows;
-
-    for (let c = 0; c < FIXED_POOL_COLS; c += 1) {
-      const colWrap = document.createElement("div");
-      colWrap.className = "pool-col";
-
-      for (let r = 0; r < rows; r += 1) {
-        const drill = game.poolColumns[c]?.[r] || null;
-
-        if (!drill) {
-          const empty = document.createElement("div");
-          empty.className = "pool-empty";
-          colWrap.appendChild(empty);
+        if (state.state === "lost") {
+          entity.container.destroy();
+          state.activeDrills = Math.max(0, state.activeDrills - 1);
           continue;
         }
 
-        const classes = [];
-        if (r > 0) classes.push("stacked");
+        entity.traveled = Math.min(entity.totalDistance, entity.traveled + DRILL_SPEED_PX_PER_SEC * deltaSec);
 
-        const hasRise = r === 0 && game.poolRiseAnimations.some((a) => a.col === c && now - a.createdAt < a.durationMs);
-        if (hasRise) {
-          classes.push("rise-in");
+        while (entity.appliedNodeIndex < entity.segmentEnds.length && entity.traveled >= entity.segmentEnds[entity.appliedNodeIndex] - 0.0001) {
+          entity.appliedNodeIndex += 1;
+          this.applyPathAction(entity, entity.worldPoints[entity.appliedNodeIndex].node, entity.appliedNodeIndex);
         }
 
-        const hideColor = Boolean(drill.hiddenUntilTopRow) && r > 0;
-        const item = makeDrillToken(drill, classes, { hideColor });
+        this.placeAtDistance(entity, entity.traveled);
 
-        if (r === 0) {
-          hasTopDrill = true;
-          item.classList.add("top");
-
-          if (canDeploy()) {
-            item.addEventListener("click", () => tryDeploy(c));
-            item.title = "Tap to deploy";
-          } else {
-            item.classList.add("disabled");
-          }
+        if (entity.traveled >= entity.totalDistance - 0.0001) {
+          const finalResult = entity.liveDrill.energy <= 0 ? "depleted" : entity.result;
+          this.finalizeDrill(finalResult, entity.liveDrill, entity);
+          continue;
         }
 
-        colWrap.appendChild(item);
+        survivors.push(entity);
       }
 
-      el.poolColumns.appendChild(colWrap);
-    }
-
-    if (game.state === "won") {
-      el.poolHint.textContent = "Victory";
-    } else if (game.state === "lost") {
-      el.poolHint.textContent = "Defeat";
-    } else if (!hasTopDrill && game.tray.length === 0) {
-      el.poolHint.textContent = "No drills left";
-    } else {
-      el.poolHint.textContent = "Top row + tray deployable";
+      this.activeDrillEntities = survivors;
     }
   }
 
-  function renderAll() {
-    renderGrid();
-    renderTray();
-    renderPool();
-  }
+  let playSceneRef = null;
 
   function wireEvents() {
     el.restartBtn.addEventListener("click", () => {
-      initLevel(game.levelIndex);
+      if (!playSceneRef) return;
+      playSceneRef.initLevel(state.levelIndex);
     });
 
     el.nextLevelBtn.addEventListener("click", () => {
-      goToNextLevel();
+      if (!playSceneRef) return;
+      playSceneRef.goToNextLevel();
     });
   }
 
   function bootstrap() {
     wireEvents();
-    initLevel(0);
+
+    const viewport = getViewportSize();
+    new Phaser.Game({
+      type: Phaser.AUTO,
+      parent: "gameRoot",
+      width: viewport.width,
+      height: viewport.height,
+      backgroundColor: "#f3e7d3",
+      scene: [BootScene, PlayScene],
+      scale: {
+        mode: Phaser.Scale.RESIZE,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+      },
+    });
   }
 
   bootstrap();

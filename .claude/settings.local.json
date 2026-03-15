@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check \"P:/projects/driller/script.js\")",
+      "Bash(git -C \"P:/projects/driller\" diff -- script.js)",
+      "Bash(git -C \"P:/projects/driller\" diff -- index.html style.css script.js)",
+      "Bash(git -C \"P:/projects/driller\" diff -- style.css script.js)"
+    ]
+  }
+}

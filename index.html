@@ -4,49 +4,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Driller Puzzle Prototype</title>
+  <title>Driller Puzzle Prototype (Phaser)</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
 </head>
 
 <body>
   <main class="app">
-    <header class="hud card">
-      <div>
-        <h1>Driller Puzzle</h1>
-        <p class="subtitle">Clear all tiles before your tray overflows.</p>
-      </div>
-      <div class="hud-actions">
-        <span id="levelText" class="pill">Level 1/1</span>
-        <button id="nextLevelBtn" class="btn" type="button">Next Level</button>
-        <button id="restartBtn" class="btn" type="button">Restart</button>
-        <div id="statusText" class="status" aria-live="polite">Ready</div>
-      </div>
-    </header>
+    <span id="levelText" class="pill" hidden>Level 1/1</span>
+    <button id="nextLevelBtn" class="btn" type="button">Next Level</button>
+    <button id="restartBtn" class="btn" type="button" hidden>Restart</button>
+    <span id="tilesRemaining" class="pill" hidden>Tiles: --</span>
+    <span id="poolHint" class="pill" hidden>Top row + tray deployable</span>
+    <div id="statusText" class="status" aria-live="polite" hidden>Ready</div>
 
-    <section class="board card">
-      <div class="board-header">
-        <h2>Top Grid</h2>
-        <span id="tilesRemaining" class="pill">Tiles: --</span>
-      </div>
-      <div id="grid" class="grid" aria-label="Puzzle grid"></div>
-    </section>
-
-    <section class="bottom-panel">
-      <article class="tray card">
-        <div class="panel-header">
-          <h2>Tray</h2>
-          <span class="pill">Capacity: 4</span>
-        </div>
-        <div id="traySlots" class="tray-slots" aria-label="Drill tray slots"></div>
-      </article>
-
-      <article class="pool card">
-        <div class="panel-header">
-          <h2>Drill Pool</h2>
-          <span id="poolHint" class="pill">Top row deployable</span>
-        </div>
-        <div id="poolColumns" class="pool-columns" aria-label="Drill pool"></div>
-      </article>
+    <section class="card game-card">
+      <div id="gameRoot" aria-label="Phaser game canvas"></div>
     </section>
   </main>
 
