@@ -298,8 +298,8 @@
   const DRILL_SPEED_PX_PER_SEC = 420;
   const DRILL_HIT_HOLD_DISTANCE_PX = 28;
   const TRAY_RETURN_DURATION_MS = 320;
-  const HIT_SHAKE_DISTANCE_PX = 1.5;
-  const HIT_SHAKE_DURATION_MS = 40;
+  const TILE_SHAKE_DISTANCE_PX = 5;
+  const TILE_SHAKE_DURATION_MS = 90;
   const MAX_ACTIVE_DRILLS = 5;
 
   const el = {
@@ -597,6 +597,7 @@
       this.layout = null;
       this.activeDrillEntities = [];
       this.traySlotPoints = [];
+      this.gridTileSprites = new Map();
     }
 
     create() {
@@ -773,6 +774,7 @@
 
     renderGrid() {
       this.clearLayer(this.gridLayer);
+      this.gridTileSprites.clear();
       const { rows, cols, tileSize } = this.layout.grid;
 
       for (let r = 0; r < rows; r += 1) {
@@ -787,6 +789,7 @@
           const sprite = this.add.image(point.x, point.y, this.colorToTexture(tileData.color));
           this.fitImageToBox(sprite, tileSize, tileSize);
           this.gridLayer.add(sprite);
+          this.gridTileSprites.set(`${r},${c}`, sprite);
 
           if (tileData.hp > 1) {
             const hp = this.add
@@ -925,13 +928,42 @@
       this.renderPool();
     }
 
-    triggerHitShake(strength = 1) {
+    triggerTileShake(row, col, strength = 1) {
       if (typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         return;
       }
 
-      const intensity = (HIT_SHAKE_DISTANCE_PX * Math.max(0.8, Math.min(1.6, strength))) / GAME_WIDTH;
-      this.cameras.main.shake(HIT_SHAKE_DURATION_MS, intensity, true);
+      const distance = TILE_SHAKE_DISTANCE_PX * Math.max(0.8, Math.min(1.6, strength));
+      const targets = [
+        { row, col },
+        { row: row - 1, col },
+        { row: row + 1, col },
+        { row, col: col - 1 },
+        { row, col: col + 1 },
+      ];
+
+      for (let i = 0; i < targets.length; i += 1) {
+        const t = targets[i];
+        const key = `${t.row},${t.col}`;
+        const sprite = this.gridTileSprites.get(key);
+        if (!sprite) continue;
+
+        const base = this.getGridPoint(t.row, t.col);
+        sprite.setPosition(base.x, base.y);
+        this.tweens.killTweensOf(sprite);
+        this.tweens.add({
+          targets: sprite,
+          x: base.x + Phaser.Math.FloatBetween(-distance, distance),
+          y: base.y + Phaser.Math.FloatBetween(-distance, distance),
+          duration: Math.max(16, Math.floor(TILE_SHAKE_DURATION_MS / 2)),
+          yoyo: true,
+          repeat: 1,
+          ease: "Sine.InOut",
+          onComplete: () => {
+            sprite.setPosition(base.x, base.y);
+          },
+        });
+      }
     }
 
     spawnDrillDebris(row, col, color, incomingDir = { x: 0, y: -1 }) {
@@ -1134,7 +1166,6 @@
         const tile = state.grid[node.row]?.[node.col] ?? null;
         if (tile?.color === entity.liveDrill.color && tile.hp > 0) {
           this.spawnDrillDebris(node.row, node.col, entity.liveDrill.color, entity.incomingDirs[nodeIndex]);
-          this.triggerHitShake(1);
 
           tile.hp = Math.max(0, tile.hp - 1);
           entity.liveDrill.energy = Math.max(0, entity.liveDrill.energy - 1);
@@ -1145,6 +1176,7 @@
           }
 
           this.renderGrid();
+          this.triggerTileShake(node.row, node.col, 1.4);
           this.maybeWin();
         }
       }
