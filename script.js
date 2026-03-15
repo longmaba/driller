@@ -793,7 +793,7 @@
 
           if (tileData.hp > 1) {
             const hp = this.add
-              .text(point.x + tileSize * 0.28, point.y - tileSize * 0.3, String(tileData.hp), {
+              .text(point.x, point.y, String(tileData.hp), {
                 fontFamily: "Inter, Segoe UI, sans-serif",
                 fontSize: `${Math.max(11, Math.floor(tileSize * 0.24))}px`,
                 color: "#ffffff",
@@ -868,16 +868,16 @@
           if (r === 0) {
             hasTopDrill = true;
 
-            const hasRise = state.poolRiseAnimations.some((a) => a.col === c && now - a.createdAt < a.durationMs);
-            if (hasRise) {
-              token.y -= Math.min(20, cell * 0.35);
-              token.alpha = 0.2;
+            const riseAnim = state.poolRiseAnimations.find((a) => a.col === c && now - a.createdAt < a.durationMs);
+            if (riseAnim) {
+              token.y += cell + rowGap;
+              token.alpha = 0.45;
               this.tweens.add({
                 targets: token,
                 y: drawY,
                 alpha: 1,
-                duration: 220,
-                ease: "Cubic.Out",
+                duration: riseAnim.durationMs,
+                ease: "Sine.Out",
               });
             }
 
@@ -888,7 +888,7 @@
               token.setAlpha(0.65);
             }
           } else {
-            token.setAlpha(hideColor ? 0.7 : 0.84);
+            token.setAlpha(hideColor ? 0.38 : 0.5);
           }
         }
       }
