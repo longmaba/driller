@@ -298,8 +298,8 @@
   const DRILL_SPEED_PX_PER_SEC = 420;
   const DRILL_HIT_HOLD_DISTANCE_PX = 28;
   const TRAY_RETURN_DURATION_MS = 320;
-  const HIT_SHAKE_DISTANCE_PX = 3;
-  const HIT_SHAKE_DURATION_MS = 90;
+  const HIT_SHAKE_DISTANCE_PX = 2;
+  const HIT_SHAKE_DURATION_MS = 70;
   const MAX_ACTIVE_DRILLS = 5;
 
   const el = {
@@ -309,6 +309,12 @@
     nextLevelBtn: document.getElementById("nextLevelBtn"),
     levelText: document.getElementById("levelText"),
     poolHint: document.getElementById("poolHint"),
+    resultOverlay: document.getElementById("resultOverlay"),
+    resultBanner: document.getElementById("resultBanner"),
+    resultImage: document.getElementById("resultImage"),
+    resultTitle: document.getElementById("resultTitle"),
+    resultRetryBtn: document.getElementById("resultRetryBtn"),
+    resultNextBtn: document.getElementById("resultNextBtn"),
   };
 
   const state = {
@@ -322,6 +328,7 @@
     state: "running", // running | won | lost
     activeDrills: 0,
     poolRiseAnimations: [],
+    groundDebris: [],
   };
 
   function cloneJson(value) {
@@ -503,6 +510,33 @@
     el.nextLevelBtn.disabled = current >= total;
   }
 
+  function showResultOverlay(type) {
+    if (!el.resultOverlay) return;
+
+    const isVictory = type === "victory";
+    const bannerSrc = isVictory ? "assets/UI/victory_banner.png" : "assets/UI/defeat_banner.png";
+    const imageSrc = isVictory ? "assets/UI/victory_image.png" : "assets/UI/defeat_image.png";
+
+    el.resultBanner.src = bannerSrc;
+    el.resultImage.src = imageSrc;
+    el.resultTitle.textContent = isVictory ? "Victory" : "Defeated";
+
+    el.resultBanner.alt = isVictory ? "Victory" : "Defeat";
+    el.resultImage.alt = isVictory ? "Victory illustration" : "Defeat illustration";
+
+    // Show/hide Next button: only visible on victory
+    if (el.resultNextBtn) {
+      el.resultNextBtn.style.display = isVictory ? "" : "none";
+    }
+
+    el.resultOverlay.hidden = false;
+  }
+
+  function hideResultOverlay() {
+    if (!el.resultOverlay) return;
+    el.resultOverlay.hidden = true;
+  }
+
   function canDeploy() {
     return state.state === "running" && state.activeDrills < MAX_ACTIVE_DRILLS;
   }
@@ -569,6 +603,7 @@
       playSceneRef = this;
 
       this.gridLayer = this.add.container(0, 0);
+      this.debrisLayer = this.add.container(0, 0);
       this.poolLayer = this.add.container(0, 0);
       this.trayLayer = this.add.container(0, 0);
       this.drillLayer = this.add.container(0, 0);
@@ -641,33 +676,36 @@
     }
 
     recalculateLayout() {
-      const padding = 28;
-      const sectionGap = 26;
-      const rowGap = 10;
       const width = this.scale.width;
       const height = this.scale.height;
+      const isDesktop = width >= 1024;
+      const padding = isDesktop ? 16 : 20;
+      const gridToTrayGap = isDesktop ? 30 : 26;
+      const trayToPoolGap = isDesktop ? 16 : 18;
+      const rowGap = 10;
 
       const poolRows = state.level.poolRows;
       const rows = state.level.rows;
       const cols = state.level.cols;
 
-      const tileGapX = -19;
-      const tileGapY = -20;
+      const tileGapX = -22;
+      const tileGapY = -24;
       const availableW = width - padding * 2;
       const availableH = height - padding * 2;
-      const maxPoolCell = 58;
-      const maxGridTile = 60;
+      const maxPoolCell = isDesktop ? 52 : 56;
+      const maxGridTile = isDesktop ? 82 : 68;
 
       const poolCellByW = Math.floor((availableW - (FIXED_POOL_COLS - 1) * rowGap) / FIXED_POOL_COLS);
-      const poolCellByH = Math.floor((availableH * 0.24 - Math.max(0, poolRows - 1) * rowGap) / Math.max(1, poolRows));
-      const poolCell = Math.max(34, Math.min(maxPoolCell, poolCellByW, poolCellByH));
+      const poolCellByH = Math.floor((availableH * 0.2 - Math.max(0, poolRows - 1) * rowGap) / Math.max(1, poolRows));
+      const poolCell = Math.max(30, Math.min(maxPoolCell, poolCellByW, poolCellByH));
       const poolHeight = poolRows * poolCell + Math.max(0, poolRows - 1) * rowGap;
 
       const trayCellByW = Math.floor((availableW - Math.max(0, state.trayCapacity - 1) * rowGap) / state.trayCapacity);
-      const trayCell = Math.max(36, Math.min(62, trayCellByW));
+      const trayCellByH = Math.floor(availableH * 0.1);
+      const trayCell = Math.max(30, Math.min(isDesktop ? 54 : 58, trayCellByW, trayCellByH));
       const trayHeight = trayCell;
 
-      const gridHeightBudget = availableH - poolHeight - trayHeight - sectionGap * 2;
+      const gridHeightBudget = availableH - poolHeight - trayHeight - gridToTrayGap - trayToPoolGap;
       const gridWidthBudget = availableW;
       const tileByW = Math.floor((gridWidthBudget - Math.max(0, cols - 1) * tileGapX) / cols);
       const tileByH = Math.floor((gridHeightBudget - Math.max(0, rows - 1) * tileGapY) / rows);
@@ -682,9 +720,9 @@
       const gridX0 = (width - gridWidth) / 2 + tileSize / 2;
       const gridY0 = padding + tileSize / 2;
       const trayX0 = (width - trayWidth) / 2;
-      const trayY0 = gridY0 + (rows - 1) * (tileSize + tileGapY) + tileSize / 2 + sectionGap;
+      const trayY0 = gridY0 + (rows - 1) * (tileSize + tileGapY) + tileSize / 2 + gridToTrayGap;
       const poolX0 = (width - poolWidth) / 2;
-      const poolY0 = trayY0 + trayHeight + sectionGap;
+      const poolY0 = trayY0 + trayHeight + trayToPoolGap;
 
       this.layout = {
         pool: { x: poolX0, y: poolY0, cell: poolCell, rowGap, rows: poolRows },
@@ -821,7 +859,7 @@
           if (!drill) continue;
 
           const hideColor = Boolean(drill.hiddenUntilTopRow) && r > 0;
-          const token = this.makeDrillToken(drawX, drawY, Math.floor(cell * 0.92), drill, hideColor);
+          const token = this.makeDrillToken(drawX, drawY, Math.floor(cell * 0.98), drill, hideColor);
           this.poolLayer.add(token);
 
           if (r === 0) {
@@ -863,8 +901,26 @@
       }
     }
 
+    renderDebris() {
+      this.clearLayer(this.debrisLayer);
+      const tileSize = this.layout.grid.tileSize;
+
+      for (let i = 0; i < state.groundDebris.length; i += 1) {
+        const piece = state.groundDebris[i];
+        const center = this.getGridPoint(piece.row, piece.col);
+        const size = Math.max(3, Math.floor(tileSize * piece.sizeRatio));
+        const sprite = this.add
+          .image(center.x + tileSize * piece.offsetXRatio, center.y + tileSize * piece.offsetYRatio, this.colorToTexture(piece.color))
+          .setDisplaySize(size, size)
+          .setAngle(piece.angle)
+          .setAlpha(piece.alpha);
+        this.debrisLayer.add(sprite);
+      }
+    }
+
     renderAll() {
       this.renderGrid();
+      this.renderDebris();
       this.renderTray();
       this.renderPool();
     }
@@ -909,6 +965,23 @@
       }
     }
 
+    spawnGroundDebris(row, col, color) {
+      const count = 9;
+      for (let i = 0; i < count; i += 1) {
+        state.groundDebris.push({
+          row,
+          col,
+          color,
+          offsetXRatio: Phaser.Math.FloatBetween(-0.26, 0.26),
+          offsetYRatio: Phaser.Math.FloatBetween(0.1, 0.34),
+          sizeRatio: Phaser.Math.FloatBetween(0.1, 0.17),
+          angle: Phaser.Math.Between(-180, 180),
+          alpha: Phaser.Math.FloatBetween(0.5, 0.9),
+        });
+      }
+      this.renderDebris();
+    }
+
     maybeWin() {
       if (state.state !== "running") return;
       if (countTiles() !== 0) return;
@@ -916,14 +989,7 @@
       state.state = "won";
       setStatus("All tiles cleared. You win!");
       this.renderAll();
-
-      if (state.levelIndex + 1 < LEVELS.length) {
-        this.time.delayedCall(650, () => {
-          if (state.state === "won") {
-            this.goToNextLevel();
-          }
-        });
-      }
+      showResultOverlay("victory");
     }
 
     animateToTray(entity, drill, done) {
@@ -952,6 +1018,7 @@
           setStatus("Tray overflow. You lose.");
           state.activeDrills = Math.max(0, state.activeDrills - 1);
           this.renderAll();
+          showResultOverlay("defeat");
           return;
         }
 
@@ -1074,6 +1141,7 @@
 
           if (tile.hp <= 0) {
             state.grid[node.row][node.col] = null;
+            this.spawnGroundDebris(node.row, node.col, tile.color);
           }
 
           this.renderGrid();
@@ -1163,6 +1231,7 @@
     }
 
     initLevel(index = 0) {
+      hideResultOverlay();
       state.levelIndex = index;
       state.level = normalizeLevel(LEVELS[index]);
       state.grid = cloneGrid(state.level.grid);
@@ -1172,6 +1241,7 @@
       state.state = "running";
       state.activeDrills = 0;
       state.poolRiseAnimations = [];
+      state.groundDebris = [];
 
       this.activeDrillEntities.forEach((entity) => entity.container.destroy());
       this.activeDrillEntities = [];
@@ -1240,6 +1310,16 @@
     });
 
     el.nextLevelBtn.addEventListener("click", () => {
+      if (!playSceneRef) return;
+      playSceneRef.goToNextLevel();
+    });
+
+    el.resultRetryBtn?.addEventListener("click", () => {
+      if (!playSceneRef) return;
+      playSceneRef.initLevel(state.levelIndex);
+    });
+
+    el.resultNextBtn?.addEventListener("click", () => {
       if (!playSceneRef) return;
       playSceneRef.goToNextLevel();
     });
