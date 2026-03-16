@@ -553,6 +553,7 @@
     const removed = col.shift() || null;
 
     if (shifted) {
+      state.poolRiseAnimations = state.poolRiseAnimations.filter((anim) => anim.col !== colIndex);
       state.poolRiseAnimations.push({
         col: colIndex,
         createdAt: performance.now(),
@@ -848,9 +849,12 @@
       state.poolRiseAnimations = state.poolRiseAnimations.filter((a) => now - a.createdAt < a.durationMs + 40);
 
       const { x, y, cell, rowGap, rows } = this.layout.pool;
+      const deployable = canDeploy();
       let hasTopDrill = false;
 
       for (let c = 0; c < FIXED_POOL_COLS; c += 1) {
+        const riseAnim = state.poolRiseAnimations.find((a) => a.col === c && now - a.createdAt < a.durationMs);
+
         for (let r = 0; r < rows; r += 1) {
           const drawX = x + c * (cell + rowGap) + cell / 2;
           const drawY = y + r * (cell + rowGap) + cell / 2;
@@ -865,30 +869,31 @@
           const token = this.makeDrillToken(drawX, drawY, Math.floor(cell * 0.98), drill, hideColor);
           this.poolLayer.add(token);
 
+          let targetAlpha = hideColor ? 0.38 : 0.5;
+
           if (r === 0) {
             hasTopDrill = true;
-
-            const riseAnim = state.poolRiseAnimations.find((a) => a.col === c && now - a.createdAt < a.durationMs);
-            if (riseAnim) {
-              token.y += cell + rowGap;
-              token.alpha = 0.45;
-              this.tweens.add({
-                targets: token,
-                y: drawY,
-                alpha: 1,
-                duration: riseAnim.durationMs,
-                ease: "Sine.Out",
-              });
-            }
-
-            if (canDeploy()) {
+            if (deployable) {
               slot.setInteractive({ useHandCursor: true });
               slot.on("pointerdown", () => this.tryDeploy(c));
+              targetAlpha = 1;
             } else {
-              token.setAlpha(0.65);
+              targetAlpha = 0.65;
             }
+          }
+
+          if (riseAnim) {
+            token.y += cell + rowGap;
+            token.alpha = Math.min(targetAlpha, 0.45);
+            this.tweens.add({
+              targets: token,
+              y: drawY,
+              alpha: targetAlpha,
+              duration: riseAnim.durationMs,
+              ease: "Sine.Out",
+            });
           } else {
-            token.setAlpha(hideColor ? 0.38 : 0.5);
+            token.setAlpha(targetAlpha);
           }
         }
       }
