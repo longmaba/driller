@@ -298,6 +298,8 @@
   const DRILL_SPEED_PX_PER_SEC = 420;
   const DRILL_BOTTOM_SEARCH_SPEED_PX_PER_SEC = 240;
   const DRILL_HIT_HOLD_DISTANCE_PX = 28;
+  const DRILL_ENTRY_START_COL = -2;
+  const DRILL_RUN_VIBRATE_AMPLITUDE_PX = 1.4;
   const TRAY_RETURN_DURATION_MS = 320;
   const TILE_SHAKE_DISTANCE_PX = 5;
   const TILE_SHAKE_DURATION_MS = 90;
@@ -437,7 +439,7 @@
 
   function buildDrillPath(drill, sourceGrid) {
     const virtualGrid = cloneGrid(sourceGrid);
-    const path = [{ row: state.level.rows, col: 0, action: "move" }];
+    const path = [{ row: state.level.rows, col: DRILL_ENTRY_START_COL, action: "move" }];
 
     const target = findFirstBottomMatchTarget(virtualGrid, drill.color);
     if (!target) {
@@ -740,15 +742,6 @@
 
     makeDrillToken(x, y, size, drill, hideColor) {
       const token = this.add.container(x, y);
-      const shadow = this.add.ellipse(
-        0,
-        Math.floor(size * 0.12),
-        Math.max(10, Math.floor(size * 0.56)),
-        Math.max(6, Math.floor(size * 0.28)),
-        0x000000,
-        0.22,
-      );
-      token.add(shadow);
 
       const inset = Math.floor(size * 0.9);
       if (hideColor) {
@@ -1013,7 +1006,7 @@
       }
     }
 
-    spawnGroundDebris(row, col, color) {
+    spawnGroundDebris(row, col, color, entity = null) {
       const count = 9;
       const tileSize = this.layout.grid.tileSize;
       const center = this.getGridPoint(row, col);
@@ -1029,7 +1022,7 @@
         const alpha = Phaser.Math.FloatBetween(0.45, 0.9);
         const angle = Phaser.Math.Between(-180, 180);
 
-        state.groundDebris.push({
+        const settledPiece = {
           row,
           col,
           color,
@@ -1038,8 +1031,7 @@
           sizeRatio,
           angle,
           alpha,
-        });
-
+        };
         const size = Math.max(2, Math.floor(tileSize * sizeRatio));
         const piece = this.add
           .image(center.x + tileSize * startOffsetXRatio, center.y + tileSize * startOffsetYRatio, this.colorToTexture(color))
@@ -1049,6 +1041,17 @@
           .setDepth(20);
         this.fxLayer.add(piece);
 
+        if (entity) {
+          entity.pendingDebrisFx += 1;
+        }
+
+        const finishPiece = () => {
+          if (piece.active) piece.destroy();
+          if (entity) {
+            entity.pendingDebrisFx = Math.max(0, entity.pendingDebrisFx - 1);
+          }
+        };
+
         this.tweens.add({
           targets: piece,
           x: center.x + tileSize * targetOffsetXRatio,
@@ -1056,11 +1059,47 @@
           angle: angle + Phaser.Math.Between(-120, 120),
           duration: Phaser.Math.Between(170, 260),
           ease: "Cubic.Out",
-          onComplete: () => piece.destroy(),
+          onComplete: () => {
+            const canSuck = entity && entity.container && entity.container.active && state.state === "running" && state.activeDrills > 0;
+
+            if (!canSuck) {
+              state.groundDebris.push(settledPiece);
+              this.renderDebris();
+              finishPiece();
+              return;
+            }
+
+            this.time.delayedCall(Phaser.Math.Between(20, 30), () => {
+              if (!piece.active) {
+                finishPiece();
+                return;
+              }
+
+              const stillCanSuck = entity.container && entity.container.active && state.state === "running" && state.activeDrills > 0;
+
+              if (!stillCanSuck) {
+                state.groundDebris.push(settledPiece);
+                this.renderDebris();
+                finishPiece();
+                return;
+              }
+
+              this.tweens.add({
+                targets: piece,
+                x: entity.container.x,
+                y: entity.container.y,
+                alpha: 0,
+                scaleX: 0.25,
+                scaleY: 0.25,
+                angle: piece.angle + Phaser.Math.Between(240, 520),
+                duration: Phaser.Math.Between(180, 280),
+                ease: "Cubic.In",
+                onComplete: () => finishPiece(),
+              });
+            });
+          },
         });
       }
-
-      this.renderDebris();
     }
 
     maybeWin() {
@@ -1137,14 +1176,6 @@
 
       const iconSize = Math.max(22, Math.floor(this.layout.grid.tileSize * 0.95));
       const container = this.add.container(worldPoints[0].pos.x, worldPoints[0].pos.y);
-      const shadow = this.add.ellipse(
-        0,
-        Math.floor(iconSize * 0.2),
-        Math.max(10, Math.floor(iconSize * 0.62)),
-        Math.max(6, Math.floor(iconSize * 0.32)),
-        0x000000,
-        0.24,
-      );
       const icon = this.add.image(0, 0, this.colorToDrillTexture(liveDrill.color));
       this.orientDrillSprite(icon, liveDrill.color, { x: 1, y: 0 });
       this.fitImageToBox(icon, iconSize, iconSize);
@@ -1159,7 +1190,7 @@
         })
         .setOrigin(0.5);
 
-      container.add([shadow, icon, energyText]);
+      container.add([icon, energyText]);
       this.drillLayer.add(container);
 
       state.activeDrills += 1;
@@ -1200,6 +1231,10 @@
         incomingDirs[i] = len > 1e-6 ? { x: dx / len, y: dy / len } : incomingDirs[i - 1];
       }
 
+      const launchDir = this.directionBetweenPoints(worldPoints[0].pos, worldPoints[1]?.pos) || { x: 1, y: 0 };
+      this.orientDrillSprite(icon, liveDrill.color, launchDir);
+      this.fitImageToBox(icon, iconSize, iconSize);
+
       const entity = {
         container,
         icon,
@@ -1213,6 +1248,8 @@
         traveled: 0,
         appliedNodeIndex: 0,
         incomingDirs,
+        pendingDebrisFx: 0,
+        vibrationSeed: Math.random() * Math.PI * 2,
         bottomSearchDistance: segmentLengths
           .filter((_, idx) => {
             const fromNode = worldPoints[idx].node;
@@ -1236,7 +1273,10 @@
 
           if (tile.hp <= 0) {
             state.grid[node.row][node.col] = null;
-            this.spawnGroundDebris(node.row, node.col, tile.color);
+            const isLastActionInPath = nodeIndex >= entity.worldPoints.length - 1;
+            if (!isLastActionInPath) {
+              this.spawnGroundDebris(node.row, node.col, tile.color, entity);
+            }
           }
 
           this.renderGrid();
@@ -1360,7 +1400,7 @@
       setStatus(`Loaded level ${nextIndex + 1}.`);
     }
 
-    update(_time, delta) {
+    update(time, delta) {
       if (!this.activeDrillEntities.length) return;
 
       const deltaSec = Math.max(0, delta) / 1000;
@@ -1386,7 +1426,21 @@
 
         this.placeAtDistance(entity, entity.traveled);
 
+        if (entity.traveled < entity.totalDistance - 0.0001) {
+          const pulse = Math.sin(time * 0.11 + entity.vibrationSeed) + Math.cos(time * 0.17 + entity.vibrationSeed * 1.31);
+          const amp = DRILL_RUN_VIBRATE_AMPLITUDE_PX;
+          entity.container.setPosition(entity.container.x + pulse * amp * 0.5, entity.container.y + pulse * amp * 0.35);
+        }
+
         if (entity.traveled >= entity.totalDistance - 0.0001) {
+          if (entity.pendingDebrisFx > 0) {
+            const wobbleX = Math.sin(time * 0.03 + i * 0.7) * 0.9;
+            const wobbleY = Math.cos(time * 0.045 + i * 0.5) * 0.7;
+            entity.container.setPosition(entity.container.x + wobbleX, entity.container.y + wobbleY);
+            survivors.push(entity);
+            continue;
+          }
+
           const finalResult = entity.liveDrill.energy <= 0 ? "depleted" : entity.result;
           this.finalizeDrill(finalResult, entity.liveDrill, entity);
           continue;
