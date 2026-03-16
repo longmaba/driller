@@ -296,6 +296,7 @@
     return { width, height };
   }
   const DRILL_SPEED_PX_PER_SEC = 420;
+  const DRILL_BOTTOM_SEARCH_SPEED_PX_PER_SEC = 240;
   const DRILL_HIT_HOLD_DISTANCE_PX = 28;
   const TRAY_RETURN_DURATION_MS = 320;
   const TILE_SHAKE_DISTANCE_PX = 5;
@@ -739,6 +740,16 @@
 
     makeDrillToken(x, y, size, drill, hideColor) {
       const token = this.add.container(x, y);
+      const shadow = this.add.ellipse(
+        0,
+        Math.floor(size * 0.12),
+        Math.max(10, Math.floor(size * 0.56)),
+        Math.max(6, Math.floor(size * 0.28)),
+        0x000000,
+        0.22,
+      );
+      token.add(shadow);
+
       const inset = Math.floor(size * 0.9);
       if (hideColor) {
         const q = this.add
@@ -916,7 +927,7 @@
       for (let i = 0; i < state.groundDebris.length; i += 1) {
         const piece = state.groundDebris[i];
         const center = this.getGridPoint(piece.row, piece.col);
-        const size = Math.max(3, Math.floor(tileSize * piece.sizeRatio));
+        const size = Math.max(2, Math.floor(tileSize * piece.sizeRatio));
         const sprite = this.add
           .image(center.x + tileSize * piece.offsetXRatio, center.y + tileSize * piece.offsetYRatio, this.colorToTexture(piece.color))
           .setDisplaySize(size, size)
@@ -1004,18 +1015,51 @@
 
     spawnGroundDebris(row, col, color) {
       const count = 9;
+      const tileSize = this.layout.grid.tileSize;
+      const center = this.getGridPoint(row, col);
+
       for (let i = 0; i < count; i += 1) {
+        const scatter = Phaser.Math.FloatBetween(0.2, 0.72);
+        const scatterAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        const targetOffsetXRatio = Math.cos(scatterAngle) * scatter;
+        const targetOffsetYRatio = Math.sin(scatterAngle) * scatter + 0.14;
+        const startOffsetXRatio = Phaser.Math.FloatBetween(-0.05, 0.05);
+        const startOffsetYRatio = Phaser.Math.FloatBetween(-0.02, 0.08);
+        const sizeRatio = Phaser.Math.FloatBetween(0.07, 0.15);
+        const alpha = Phaser.Math.FloatBetween(0.45, 0.9);
+        const angle = Phaser.Math.Between(-180, 180);
+
         state.groundDebris.push({
           row,
           col,
           color,
-          offsetXRatio: Phaser.Math.FloatBetween(-0.26, 0.26),
-          offsetYRatio: Phaser.Math.FloatBetween(0.1, 0.34),
-          sizeRatio: Phaser.Math.FloatBetween(0.1, 0.17),
-          angle: Phaser.Math.Between(-180, 180),
-          alpha: Phaser.Math.FloatBetween(0.5, 0.9),
+          offsetXRatio: targetOffsetXRatio,
+          offsetYRatio: targetOffsetYRatio,
+          sizeRatio,
+          angle,
+          alpha,
+        });
+
+        const size = Math.max(2, Math.floor(tileSize * sizeRatio));
+        const piece = this.add
+          .image(center.x + tileSize * startOffsetXRatio, center.y + tileSize * startOffsetYRatio, this.colorToTexture(color))
+          .setDisplaySize(size, size)
+          .setAngle(angle)
+          .setAlpha(alpha)
+          .setDepth(20);
+        this.fxLayer.add(piece);
+
+        this.tweens.add({
+          targets: piece,
+          x: center.x + tileSize * targetOffsetXRatio,
+          y: center.y + tileSize * targetOffsetYRatio,
+          angle: angle + Phaser.Math.Between(-120, 120),
+          duration: Phaser.Math.Between(170, 260),
+          ease: "Cubic.Out",
+          onComplete: () => piece.destroy(),
         });
       }
+
       this.renderDebris();
     }
 
@@ -1093,6 +1137,14 @@
 
       const iconSize = Math.max(22, Math.floor(this.layout.grid.tileSize * 0.95));
       const container = this.add.container(worldPoints[0].pos.x, worldPoints[0].pos.y);
+      const shadow = this.add.ellipse(
+        0,
+        Math.floor(iconSize * 0.2),
+        Math.max(10, Math.floor(iconSize * 0.62)),
+        Math.max(6, Math.floor(iconSize * 0.32)),
+        0x000000,
+        0.24,
+      );
       const icon = this.add.image(0, 0, this.colorToDrillTexture(liveDrill.color));
       this.orientDrillSprite(icon, liveDrill.color, { x: 1, y: 0 });
       this.fitImageToBox(icon, iconSize, iconSize);
@@ -1107,7 +1159,7 @@
         })
         .setOrigin(0.5);
 
-      container.add([icon, energyText]);
+      container.add([shadow, icon, energyText]);
       this.drillLayer.add(container);
 
       state.activeDrills += 1;
@@ -1161,6 +1213,13 @@
         traveled: 0,
         appliedNodeIndex: 0,
         incomingDirs,
+        bottomSearchDistance: segmentLengths
+          .filter((_, idx) => {
+            const fromNode = worldPoints[idx].node;
+            const toNode = worldPoints[idx + 1].node;
+            return fromNode.row === state.level.rows && toNode.row === state.level.rows;
+          })
+          .reduce((sum, len) => sum + len, 0),
       };
 
       this.activeDrillEntities.push(entity);
@@ -1316,7 +1375,9 @@
           continue;
         }
 
-        entity.traveled = Math.min(entity.totalDistance, entity.traveled + DRILL_SPEED_PX_PER_SEC * deltaSec);
+        const isSearchingAtBottom = entity.traveled < entity.bottomSearchDistance - 0.0001;
+        const speedPxPerSec = isSearchingAtBottom ? DRILL_BOTTOM_SEARCH_SPEED_PX_PER_SEC : DRILL_SPEED_PX_PER_SEC;
+        entity.traveled = Math.min(entity.totalDistance, entity.traveled + speedPxPerSec * deltaSec);
 
         while (entity.appliedNodeIndex < entity.segmentEnds.length && entity.traveled >= entity.segmentEnds[entity.appliedNodeIndex] - 0.0001) {
           entity.appliedNodeIndex += 1;
